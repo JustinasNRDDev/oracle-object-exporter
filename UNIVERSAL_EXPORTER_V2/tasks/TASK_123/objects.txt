@@ -1,0 +1,37 @@
+# Task-specific export definition
+# Use [ENV] blocks and one or more schema sections per environment.
+
+[DEV]
+nls_lang: Lithuanian_lithuania.utf8
+schema:APPUSER19
+packages: PKG_EXP_TEST_19
+procedures: PR_EXP_TEST_19
+functions: FN_EXP_TEST_19
+tables: AI_DEMO_REQUESTS,TEST1
+views: VW_EXP_TEST_19
+types: TP_EXP_TEST_19
+
+schema:APPUSER19_2
+packages: PKG_EXP_TEST_19_2
+procedures: PR_EXP_TEST_19_2
+functions: FN_EXP_TEST_19_2
+views: VW_EXP_TEST_19_2
+types: TP_EXP_TEST_19_2
+
+[TEST]
+schema:APPUSER19
+packages: PKG_EXP_TEST_19
+procedures: PR_EXP_TEST_19
+functions: FN_EXP_TEST_19
+tables: AI_DEMO_REQUESTS,TEST1
+views: VW_EXP_TEST_19
+types: TP_EXP_TEST_19
+
+[PROD]
+schema:APPUSER19
+packages: PKG_EXP_TEST_19
+procedures: PR_EXP_TEST_19
+functions: FN_EXP_TEST_19
+tables: AI_DEMO_REQUESTS,TEST1
+views: VW_EXP_TEST_19
+types: TP_EXP_TEST_19

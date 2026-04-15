@@ -108,6 +108,35 @@ oracle_exporter.exe TASK_123 DEV APPUSER19
 
 Svarbu: exe tikisi, kad salia bus `config/`, `scripts/` ir `tasks/` katalogai.
 
+## Release + pasirasymas (automatizuota)
+
+Naujas skriptas:
+
+- release_sign_and_publish.ps1
+
+Ka jis daro vienu paleidimu:
+
+1. Buildina exe is source.
+2. Gali pasirasyt su code-signing sertifikatu.
+3. Verifikuoja parasa.
+4. Nukopijuoja exe i `../UNIVERSAL_EXPORTER_V1` (nebent nurodytas `-SkipPublishToRuntime`).
+5. Sugeneruoja hash ir release ataskaita:
+	 - `release/oracle_exporter.sha256.txt`
+	 - `release/oracle_exporter.release.json`
+
+Pavyzdziai:
+
+- tik build + publish (be pasirasymo):
+	powershell -ExecutionPolicy Bypass -File .\release_sign_and_publish.ps1 -NoSign
+
+- build + pasirasymas su PFX:
+	powershell -ExecutionPolicy Bypass -File .\release_sign_and_publish.ps1 -PfxPath C:\certs\company_codesign.pfx -PfxPassword (Read-Host "PFX password" -AsSecureString)
+
+- build + pasirasymas su sertifikatu is cert store (thumbprint):
+	powershell -ExecutionPolicy Bypass -File .\release_sign_and_publish.ps1 -CertThumbprint "THUMBPRINT_HEX"
+
+Pastaba: jei neturite SignTool (Windows SDK Signing Tools), galite paleisti su `-NoSign`.
+
 ## Rezultatai ir logai
 
 Eksporto failai rasomi i:

@@ -1,0 +1,10 @@
+{
+    "generatedAt":  "2026-04-15T15:06:00",
+    "sourceProjectPath":  "C:\\Users\\jsr\\Documents\\cookbook\\UNIVERSAL_EXPORTER_2026_04_15\\UNIVERSAL_EXPORTER\\UNIVERSAL_EXPORTER_IMPROVED",
+    "runtimeProjectPath":  "C:\\Users\\jsr\\Documents\\cookbook\\UNIVERSAL_EXPORTER_2026_04_15\\UNIVERSAL_EXPORTER\\UNIVERSAL_EXPORTER_V1",
+    "targetExe":  "C:\\Users\\jsr\\Documents\\cookbook\\UNIVERSAL_EXPORTER_2026_04_15\\UNIVERSAL_EXPORTER\\UNIVERSAL_EXPORTER_V1\\oracle_exporter.exe",
+    "sha256":  "3278901FECA34B7DADDE9C85403600CD64D5FFE6A13755FE28A6A71FB0028144",
+    "signatureStatus":  "NotSigned",
+    "signatureStatusMessage":  "The file C:\\Users\\jsr\\Documents\\cookbook\\UNIVERSAL_EXPORTER_2026_04_15\\UNIVERSAL_EXPORTER\\UNIVERSAL_EXPORTER_V1\\oracle_exporter.exe is not digitally signed. You cannot run this script on the current system. For more information about running scripts and setting execution policy, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170",
+    "signed":  false
+}

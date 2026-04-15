@@ -1,0 +1,31 @@
+# Copy this folder and rename TASK_TEMPLATE to your task id, e.g. TASK_456
+# Then fill object names per environment and schema.
+
+[DEV]
+# nls_lang is optional; if omitted, config/exporter.yaml defaults are used.
+# nls_lang: Lithuanian_lithuania.utf8
+schema:APPUSER19
+packages:
+procedures:
+functions:
+tables:
+views:
+types:
+
+[TEST]
+schema:APPUSER19
+packages:
+procedures:
+functions:
+tables:
+views:
+types:
+
+[PROD]
+schema:APPUSER19
+packages:
+procedures:
+functions:
+tables:
+views:
+types:
