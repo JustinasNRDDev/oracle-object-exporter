@@ -1,0 +1,7 @@
+# Runtime outputs (do not commit)
+logs/**
+EXPORTED_OBJECTS/**
+
+# Keep empty folder structure in git
+!logs/.gitkeep
+!EXPORTED_OBJECTS/.gitkeep
