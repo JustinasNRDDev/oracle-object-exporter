@@ -39,3 +39,24 @@ Palikti `.gitkeep`, kad katalogu struktura isliktu repozitorijoje.
 1. Kurti ir testuoti pakeitimus `UNIVERSAL_EXPORTER_IMPROVED`.
 2. Isleisti stabilia versija i `UNIVERSAL_EXPORTER_V1`.
 3. Jei darbo aplinkoje blokuojamas `.exe`, naudoti `UNIVERSAL_EXPORTER_V2` per BAT + PowerShell.
+
+## --dry-run (visur vienoda logika)
+
+`--dry-run` skirtas saugiai pasitikrinti vykdymo plana pries realu eksporta.
+
+Kas vyksta:
+- tikrinami argumentai ir konfiguracija,
+- nuskaitymas `config/exporter.yaml` ir task `objects.txt`,
+- validuojama, kad connection failas egzistuoja,
+- atspausdinamas pilnas EXECUTE planas,
+- sukuriamas vykdymo logas.
+
+Kas nevyksta:
+- SQL*Plus komandos nepaleidziamos,
+- prisijungimas prie DB nevyksta,
+- objektu turinys neeksportuojamas.
+
+Komandu pavyzdziai:
+- `UNIVERSAL_EXPORTER_IMPROVED`: `python run_export.py TASK_123 DEV --dry-run`
+- `UNIVERSAL_EXPORTER_V1`: `oracle_exporter.exe TASK_123 DEV --dry-run`
+- `UNIVERSAL_EXPORTER_V2`: `oracle_exporter_task.bat TASK_123 DEV --dry-run`

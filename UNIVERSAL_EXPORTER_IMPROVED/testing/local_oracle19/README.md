@@ -38,20 +38,28 @@ Atnaujintas `config/exporter.yaml`:
 ./testing/local_oracle19/setup_objects.ps1
 ```
 
-2. Paleisti gyva eksporta:
+2. (Rekomenduojama) Pirma pasitikrinti plana su `--dry-run`:
+
+```powershell
+python run_export.py --config config/exporter.yaml --env LOCAL19 --dry-run
+```
+
+`--dry-run` validuoja konfiguracija ir parodo visas planuojamas SQL*Plus komandas, bet neprisijungia prie DB ir neeksportuoja objektu turinio.
+
+3. Paleisti gyva eksporta:
 
 ```powershell
 ./testing/local_oracle19/run_live_export.ps1
 ```
 
-3. Patikrinti rezultata:
+4. Patikrinti rezultata:
 
 ```text
 EXPORTED_OBJECTS/LOCAL19/<timestamp>/APPUSER19/...
 EXPORTED_OBJECTS/LOCAL19/<timestamp>/APPUSER19_2/...
 ```
 
-4. (Pasirinktinai) Isvalyti objektus:
+5. (Pasirinktinai) Isvalyti objektus:
 
 ```powershell
 ./testing/local_oracle19/cleanup_objects.ps1

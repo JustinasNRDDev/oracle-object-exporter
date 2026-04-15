@@ -86,6 +86,31 @@ python run_export.py TASK_123 DEV --dry-run
 python run_export.py TASK_123 DEV --nls-lang Lithuanian_lithuania.utf8
 python run_export.py TASK_123 DEV --task-root tasks --task-objects-file objects.txt
 
+## Ka tiksliai duoda --dry-run
+
+`--dry-run` yra saugus planavimo rezimas pries realu eksporta.
+
+Kas ivyksta su `--dry-run`:
+
+1. Patikrinami ivesties argumentai (TASK, ENV, optional SCHEMA).
+2. Nuskaitymas ir validacija:
+	- `config/exporter.yaml`
+	- `tasks/<TASK>/objects.txt`
+3. Patikrinama, kad egzistuoja connection failas is config ir ji galima perskaityti.
+4. Suformuojamas pilnas vykdymo planas: kiekvienam zingsniui atspausdinamos SQL*Plus komandos (`EXECUTE | ...`).
+5. Sukuriamas run logas.
+
+Ko `--dry-run` nedaro:
+
+1. Nepaleidzia SQL*Plus komandu.
+2. Nesijungia prie Oracle DB.
+3. Neeksportuoja objektu turinio i failus.
+
+Svarbi praktine pastaba:
+
+- Gali buti sukurti tik planavimo artefaktai (pvz. logai ar laikina run struktura), bet ne realus objektu DDL/source turinys.
+- Jei reikia tik pasitikrinti plana pries gyva paleidima, pirma naudokite `--dry-run`.
+
 Legacy YAML mode (be TASK) vis dar palaikomas atgaliniam suderinamumui:
 
 python run_export.py --env DEV

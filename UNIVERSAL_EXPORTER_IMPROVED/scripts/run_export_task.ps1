@@ -486,7 +486,8 @@ function Invoke-SqlPlus {
         return
     }
 
-    $output = & $sqlplusExecutable $connection ("@{0}" -f $scriptPath) @Arguments 2>&1
+    # Ensure sqlplus terminates after script execution instead of staying interactive.
+    $output = "exit" | & $sqlplusExecutable -L $connection ("@{0}" -f $scriptPath) @Arguments 2>&1
     foreach ($line in $output) {
         $text = [string]$line
         Write-Host $text
