@@ -58,6 +58,9 @@ Pastabos:
 
 - run_export.py - pagrindinis vykdymo variklis.
 - oracle_exporter.bat - task-komandos wrapperis per Python.
+- oracle_exporter_task.bat - task-komandos wrapperis per .bat adapteri.
+- scripts/run_export_task.bat - .bat adapteris, kuris islaiko ta pati CLI ir perduoda vykdyma i PowerShell varikli.
+- scripts/run_export_task.ps1 - task parseris ir vykdymo variklis (PowerShell).
 - build_oracle_exporter_exe.bat - one-file .exe surinkimas.
 - config/exporter.yaml - baziniai nustatymai (connection, extensions, output, task root).
 - tasks/ - task aplankai su objects.txt.

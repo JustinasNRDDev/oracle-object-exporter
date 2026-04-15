@@ -16,6 +16,24 @@ if (-not (Test-Path -LiteralPath $script:LogsDir)) {
     New-Item -Path $script:LogsDir -ItemType Directory | Out-Null
 }
 $script:LogFile = Join-Path $script:LogsDir ("bat_export_{0}.log" -f $script:Timestamp)
+$script:LogWriteWarningShown = $false
+
+function Write-LogFileLine {
+    param([string]$Line)
+
+    if (-not $script:LogFile) { return }
+
+    try {
+        $encoding = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::AppendAllText($script:LogFile, $Line + [Environment]::NewLine, $encoding)
+    }
+    catch {
+        if (-not $script:LogWriteWarningShown) {
+            $script:LogWriteWarningShown = $true
+            Write-Warning (("Nepavyko rasyti log failo '{0}': {1}. Vykdymas tesiamas be failinio log." -f $script:LogFile, $_.Exception.Message))
+        }
+    }
+}
 
 function Expand-EnvPath {
     param([string]$Value)
@@ -45,7 +63,7 @@ function Write-Log {
     param([string]$Message)
     $line = "{0} | {1}" -f (Get-Date -Format "s"), $Message
     Write-Host $line
-    Add-Content -Path $script:LogFile -Value $line
+    Write-LogFileLine -Line $line
 }
 
 function ConvertTo-NormalizedYamlValue {
@@ -491,7 +509,7 @@ function Invoke-SqlPlus {
     foreach ($line in $output) {
         $text = [string]$line
         Write-Host $text
-        Add-Content -Path $script:LogFile -Value $text
+        Write-LogFileLine -Line $text
     }
 
     if ($LASTEXITCODE -ne 0) {

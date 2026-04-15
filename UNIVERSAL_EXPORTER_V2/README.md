@@ -54,7 +54,8 @@ Svarbi praktine pastaba:
 ## Struktura
 
 - `oracle_exporter_task.bat` - pagrindinis entrypoint.
-- `scripts/run_export_task.ps1` - task parseris ir vykdymo variklis (PowerShell).
+- `scripts/run_export_task.bat` - .bat adapteris su tuo paciu CLI (`TASK ENV [SCHEMA] [--dry-run]`) ir named parametru palaikymu.
+- `scripts/run_export_task.ps1` - pagrindinis task parseris ir vykdymo variklis (PowerShell), kvieciamas per `run_export_task.bat`.
 - `config/exporter.yaml` - baziniai nustatymai (connection, extensions, ddl_source).
 - `tasks/<TASK>/objects.txt` - task objektu sarasai.
 - `scripts/*.sql` - SQL*Plus eksportavimo skriptai.
