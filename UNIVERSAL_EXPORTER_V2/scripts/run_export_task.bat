@@ -546,7 +546,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-call :WriteObjectsTemplate "%TASK_FILE_TO_CREATE%"
+call :CreateTaskTemplateOrWizard "%TASK_FILE_TO_CREATE%"
 if errorlevel 1 exit /b 1
 
 echo Sukurtas task aplankas ir sablonas: "%TASK_FILE_TO_CREATE%".
@@ -572,11 +572,33 @@ if errorlevel 1 (
     exit /b 1
 )
 
-call :WriteObjectsTemplate "%TASK_FILE_TO_CREATE%"
+call :CreateTaskTemplateOrWizard "%TASK_FILE_TO_CREATE%"
 if errorlevel 1 exit /b 1
 
 echo Sukurtas sablonas: "%TASK_FILE_TO_CREATE%".
 exit /b 0
+
+:CreateTaskTemplateOrWizard
+set "TASK_TEMPLATE_PATH=%~1"
+
+echo.
+set "INTERACTIVE_TEMPLATE_ANSWER="
+set /p INTERACTIVE_TEMPLATE_ANSWER="Ar norite uzpildyti objects.txt interaktyviai dabar? (Y/N, Enter=N): "
+call :Trim "%INTERACTIVE_TEMPLATE_ANSWER%" INTERACTIVE_TEMPLATE_ANSWER
+if defined INTERACTIVE_TEMPLATE_ANSWER set "INTERACTIVE_TEMPLATE_ANSWER=%INTERACTIVE_TEMPLATE_ANSWER:~0,1%"
+
+if /I "%INTERACTIVE_TEMPLATE_ANSWER%"=="Y" (
+    call :WriteObjectsTemplateInteractive "%TASK_TEMPLATE_PATH%"
+    exit /b %errorlevel%
+)
+
+if /I "%INTERACTIVE_TEMPLATE_ANSWER%"=="YES" (
+    call :WriteObjectsTemplateInteractive "%TASK_TEMPLATE_PATH%"
+    exit /b %errorlevel%
+)
+
+call :WriteObjectsTemplate "%TASK_TEMPLATE_PATH%"
+exit /b %errorlevel%
 
 :WriteObjectsTemplate
 set "TASK_TEMPLATE_PATH=%~1"
@@ -620,6 +642,126 @@ if errorlevel 1 (
     exit /b 1
 )
 
+exit /b 0
+
+:WriteObjectsTemplateInteractive
+set "TASK_TEMPLATE_PATH=%~1"
+
+(
+echo # Task eksportavimo aprasas.
+echo # Sukurtas interaktyviai per CLI.
+echo # Galimi objektu tipai: packages, procedures, functions, tables, views, types.
+echo # Visur galima palikti tuscia arba ivesti SKIP.
+echo.
+) > "%TASK_TEMPLATE_PATH%"
+
+if errorlevel 1 (
+    echo Klaida: nepavyko sukurti task failo "%TASK_TEMPLATE_PATH%".
+    exit /b 1
+)
+
+call :CollectInteractiveEnv "%TASK_TEMPLATE_PATH%" "DEV"
+if errorlevel 1 exit /b 1
+
+call :CollectInteractiveEnv "%TASK_TEMPLATE_PATH%" "TEST"
+if errorlevel 1 exit /b 1
+
+call :CollectInteractiveEnv "%TASK_TEMPLATE_PATH%" "PROD"
+if errorlevel 1 exit /b 1
+
+echo Interaktyvus task failas sukurtas: "%TASK_TEMPLATE_PATH%".
+exit /b 0
+
+:CollectInteractiveEnv
+set "TASK_TEMPLATE_PATH=%~1"
+set "ENV_LABEL=%~2"
+
+echo.
+set "ENV_INCLUDE_ANSWER="
+set /p ENV_INCLUDE_ANSWER="AR ENV %ENV_LABEL% ? (Y/N, Enter=skip): "
+call :Trim "%ENV_INCLUDE_ANSWER%" ENV_INCLUDE_ANSWER
+if defined ENV_INCLUDE_ANSWER set "ENV_INCLUDE_ANSWER=%ENV_INCLUDE_ANSWER:~0,1%"
+
+if /I "%ENV_INCLUDE_ANSWER%"=="Y" goto CollectInteractiveEnvYes
+if /I "%ENV_INCLUDE_ANSWER%"=="YES" goto CollectInteractiveEnvYes
+
+call :AppendCommentedEnvTemplate "%TASK_TEMPLATE_PATH%" "%ENV_LABEL%"
+exit /b 0
+
+:CollectInteractiveEnvYes
+set "ENV_NLS_RAW="
+set /p ENV_NLS_RAW="Nurodykite nls_lang %ENV_LABEL% aplinkai (Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_NLS_RAW%" ENV_NLS_VALUE
+
+set "ENV_SCHEMA_RAW="
+set /p ENV_SCHEMA_RAW="Iveskite schema %ENV_LABEL% aplinkai DIDZIOSIOMIS (Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_SCHEMA_RAW%" ENV_SCHEMA_VALUE
+
+if not defined ENV_SCHEMA_VALUE (
+    echo Praleista: ENV %ENV_LABEL% - schema nenurodyta.
+    call :AppendCommentedEnvTemplate "%TASK_TEMPLATE_PATH%" "%ENV_LABEL%"
+    exit /b 0
+)
+
+set "ENV_PACKAGES_RAW="
+set /p ENV_PACKAGES_RAW="Iveskite packages sarasa %ENV_LABEL% aplinkai (kableliais, Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_PACKAGES_RAW%" ENV_PACKAGES_VALUE
+
+set "ENV_PROCEDURES_RAW="
+set /p ENV_PROCEDURES_RAW="Iveskite procedures sarasa %ENV_LABEL% aplinkai (kableliais, Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_PROCEDURES_RAW%" ENV_PROCEDURES_VALUE
+
+set "ENV_FUNCTIONS_RAW="
+set /p ENV_FUNCTIONS_RAW="Iveskite functions sarasa %ENV_LABEL% aplinkai (kableliais, Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_FUNCTIONS_RAW%" ENV_FUNCTIONS_VALUE
+
+set "ENV_TABLES_RAW="
+set /p ENV_TABLES_RAW="Iveskite tables sarasa %ENV_LABEL% aplinkai (kableliais, Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_TABLES_RAW%" ENV_TABLES_VALUE
+
+set "ENV_VIEWS_RAW="
+set /p ENV_VIEWS_RAW="Iveskite views sarasa %ENV_LABEL% aplinkai (kableliais, Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_VIEWS_RAW%" ENV_VIEWS_VALUE
+
+set "ENV_TYPES_RAW="
+set /p ENV_TYPES_RAW="Iveskite types sarasa %ENV_LABEL% aplinkai (kableliais, Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_TYPES_RAW%" ENV_TYPES_VALUE
+
+>> "%TASK_TEMPLATE_PATH%" echo [%ENV_LABEL%]
+if defined ENV_NLS_VALUE >> "%TASK_TEMPLATE_PATH%" echo nls_lang:%ENV_NLS_VALUE%
+>> "%TASK_TEMPLATE_PATH%" echo schema:%ENV_SCHEMA_VALUE%
+>> "%TASK_TEMPLATE_PATH%" echo packages:%ENV_PACKAGES_VALUE%
+>> "%TASK_TEMPLATE_PATH%" echo procedures:%ENV_PROCEDURES_VALUE%
+>> "%TASK_TEMPLATE_PATH%" echo functions:%ENV_FUNCTIONS_VALUE%
+>> "%TASK_TEMPLATE_PATH%" echo tables:%ENV_TABLES_VALUE%
+>> "%TASK_TEMPLATE_PATH%" echo views:%ENV_VIEWS_VALUE%
+>> "%TASK_TEMPLATE_PATH%" echo types:%ENV_TYPES_VALUE%
+>> "%TASK_TEMPLATE_PATH%" echo.
+exit /b 0
+
+:AppendCommentedEnvTemplate
+set "TASK_TEMPLATE_PATH=%~1"
+set "ENV_LABEL=%~2"
+
+>> "%TASK_TEMPLATE_PATH%" echo # [%ENV_LABEL%]
+>> "%TASK_TEMPLATE_PATH%" echo # schema:APPUSER19
+>> "%TASK_TEMPLATE_PATH%" echo # packages:
+>> "%TASK_TEMPLATE_PATH%" echo # procedures:
+>> "%TASK_TEMPLATE_PATH%" echo # functions:
+>> "%TASK_TEMPLATE_PATH%" echo # tables:
+>> "%TASK_TEMPLATE_PATH%" echo # views:
+>> "%TASK_TEMPLATE_PATH%" echo # types:
+>> "%TASK_TEMPLATE_PATH%" echo.
+exit /b 0
+
+:NormalizeWizardInput
+set "WIZARD_RAW=%~1"
+call :StripQuotes "%WIZARD_RAW%" WIZARD_RAW
+call :Trim "%WIZARD_RAW%" WIZARD_RAW
+
+if /I "%WIZARD_RAW%"=="SKIP" set "WIZARD_RAW="
+
+set "%~2=%WIZARD_RAW%"
 exit /b 0
 
 :ProcessTaskFile
