@@ -1,17 +1,16 @@
 # UNIVERSAL_EXPORTER_V2
 
-Oracle objektu eksportavimas be Python ir be .exe pasirasymo.
+Oracle objektu eksportavimas be Python, be PowerShell ir be .exe pasirasymo.
 
 Sis variantas skirtas darbo aplinkai, kur:
 - nera Python,
 - nera admin teisiu,
-- .bat + PowerShell paleidimas veikia patikimiau nei nepasirasytas exe.
+- reikia paleidimo tik su `.bat` sintakse (be PowerShell).
 
 ## Kas reikalinga
 
-1. Windows PowerShell (standartiskai yra Windows aplinkoje).
-2. SQL*Plus (Oracle client) PATH arba nurodytas `sqlplus_executable` config'e.
-3. Prisijungimo failai pagal `config/exporter.yaml`.
+1. SQL*Plus (Oracle client) PATH arba nurodytas `sqlplus_executable` config'e.
+2. Prisijungimo failai pagal `config/exporter.yaml`.
 
 ## Paleidimas
 
@@ -54,13 +53,16 @@ Svarbi praktine pastaba:
 ## Struktura
 
 - `oracle_exporter_task.bat` - pagrindinis entrypoint.
-- `scripts/run_export_task.bat` - .bat adapteris su tuo paciu CLI (`TASK ENV [SCHEMA] [--dry-run]`) ir named parametru palaikymu.
-- `scripts/run_export_task.ps1` - pagrindinis task parseris ir vykdymo variklis (PowerShell), kvieciamas per `run_export_task.bat`.
+- `scripts/run_export_task.bat` - pagrindinis task parseris ir vykdymo variklis (BAT), su tuo paciu CLI (`TASK ENV [SCHEMA] [--dry-run]`) ir named parametru palaikymu.
 - `config/exporter.yaml` - baziniai nustatymai (connection, extensions, ddl_source).
 - `tasks/<TASK>/objects.txt` - task objektu sarasai.
 - `scripts/*.sql` - SQL*Plus eksportavimo skriptai.
 - `logs/` - vykdymo logai.
 - `EXPORTED_OBJECTS/` - sugeneruoti objektai.
+
+Path/logikos pastaba:
+
+- Paleidimo `.bat` failai visus vidinius kelius skaiciuoja nuo savo direktorijos (`%~dp0`), todel eksporteri galima paleisti is bet kurios vietos (nebutina pirma `cd` i projekto kataloga).
 
 ## Pastabos
 
