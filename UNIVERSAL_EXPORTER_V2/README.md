@@ -70,3 +70,16 @@ Path/logikos pastaba:
 - `objects.txt` formatas: [ENV] blokai, `schema:`, ir objektu tipai (`packages`, `procedures`, `functions`, `tables`, `views`, `types`).
 - NLS koduote gali buti nurodyta task faile per `nls_lang:`.
 - `config/exporter.yaml` `export_extensions` reiksmes gali buti bet kokios (pvz. `pr`, `prc`, `fc`, `fnc`, `pkgx`, `sqlx` ir pan.) - jos neberibojamos iki fiksuoto saraso.
+
+## Testavimas
+
+- Test scenariju kontraktas: `testing/TEST_SCENARIOS.md`
+- Automatiniu kontraktiniu testu paleidimas: `testing/run_contract_tests.bat`
+
+Komanda:
+
+testing\run_contract_tests.bat
+
+Testu tikslas:
+
+- Uzfiksuoti funkcini kontrakta, kad perrasant i Python/EXE/C# butu islaikytas identiskas elgesys.

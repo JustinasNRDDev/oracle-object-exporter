@@ -1,7 +1,9 @@
 # Runtime outputs (do not commit)
 logs/**
 EXPORTED_OBJECTS/**
+testing/runtime/**
 
 # Keep folder structure
 !logs/.gitkeep
 !EXPORTED_OBJECTS/.gitkeep
+!testing/runtime/.gitkeep
