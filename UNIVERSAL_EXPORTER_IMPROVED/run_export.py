@@ -5,6 +5,7 @@ import datetime as dt
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -55,6 +56,57 @@ STEP_ALIASES = {
     "views": "view_ddl",
     "view": "view_ddl",
     "view_ddl": "view_ddl",
+}
+
+PREFLIGHT_REQUIRED_SCRIPTS = (
+    "validate_and_export_package.sql",
+    "validate_and_export_procedure.sql",
+    "validate_and_export_function.sql",
+    "validate_and_export_type.sql",
+    "generate_tbl_ddl.sql",
+    "generate_tbl_ddl_dba.sql",
+    "generate_view_ddl.sql",
+    "generate_view_ddl_dba.sql",
+    "master_header.sql",
+    "master_footer.sql",
+    "preflight_check.sql",
+)
+
+PREFLIGHT_CAPABILITY_BY_STEP = {
+    "packages": "PACKAGES",
+    "procedures": "PROCEDURES",
+    "functions": "FUNCTIONS",
+    "types": "TYPES",
+    "table_ddl": "TABLES",
+    "view_ddl": "VIEWS",
+}
+
+PREFLIGHT_MISSING_LABEL_BY_STEP = {
+    "packages": "packages",
+    "procedures": "procedures",
+    "functions": "functions",
+    "types": "types",
+    "table_ddl": "tables",
+    "view_ddl": "views",
+}
+
+PREFLIGHT_PRIV_KEYS = {
+    "CREATE_SESSION": 0,
+    "SELECT_ANY_DICTIONARY": 0,
+    "DEBUG_ANY_PROCEDURE": 0,
+}
+
+PREFLIGHT_ROLE_KEYS = {
+    "SELECT_CATALOG_ROLE": 0,
+}
+
+PREFLIGHT_CAPABILITY_KEYS = {
+    "PACKAGES": 0,
+    "PROCEDURES": 0,
+    "FUNCTIONS": 0,
+    "TYPES": 0,
+    "TABLES": 0,
+    "VIEWS": 0,
 }
 
 SQL_ERROR_PATTERN = re.compile(r"\b(ORA-\d+|SP2-\d+)\b", re.IGNORECASE)
@@ -133,6 +185,17 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Print actions without executing sqlplus.",
+    )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="Run readiness checks (sqlplus, scripts, DB capabilities) without exporting artifacts.",
+    )
+    parser.add_argument(
+        "--check",
+        dest="preflight_check",
+        action="store_true",
+        help="Alias for --preflight.",
     )
     parser.add_argument(
         "--strict",
@@ -933,6 +996,243 @@ def determine_strict_mode(config: dict[str, Any], args: argparse.Namespace) -> b
     return config_value
 
 
+def bool_to_yes_no(value: int) -> str:
+    return "YES" if value == 1 else "NO"
+
+
+def validate_sqlplus_executable(sqlplus_executable: str, project_root: Path) -> None:
+    candidate = expand_env_vars(sqlplus_executable).strip().strip('"')
+    if not candidate:
+        raise ExporterError("defaults.sqlplus_executable must not be empty.")
+
+    candidate_path = Path(candidate)
+    if candidate_path.is_absolute() or any(sep in candidate for sep in ("/", "\\")):
+        if not candidate_path.is_absolute():
+            candidate_path = (project_root / candidate_path).resolve()
+        if candidate_path.exists() and candidate_path.is_file():
+            return
+
+    if shutil.which(candidate):
+        return
+
+    raise ExporterError(
+        f"Klaida: sqlplus nepasiekiamas per '{sqlplus_executable}'. "
+        "Patikrinkite PATH arba defaults.sqlplus_executable."
+    )
+
+
+def validate_required_scripts(scripts_dir: Path) -> None:
+    missing = [name for name in PREFLIGHT_REQUIRED_SCRIPTS if not (scripts_dir / name).exists()]
+    if missing:
+        missing_lines = "\n - ".join(missing)
+        raise ExporterError(f"Klaida: nerasti privalomi SQL skriptai:\n - {missing_lines}")
+
+
+def parse_preflight_bool(raw_value: str) -> int:
+    value = raw_value.strip()
+    return 1 if value == "1" else 0
+
+
+def run_preflight_sqlplus(
+    *,
+    sqlplus_executable: str,
+    connection: str,
+    preflight_script: Path,
+    cwd: Path,
+    env: dict[str, str],
+    logger: logging.Logger,
+) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    cmd = [sqlplus_executable, "-L", "-S", connection, f"@{preflight_script}"]
+    masked_display_cmd = [sqlplus_executable, "-L", "-S", "<connection-redacted>", f"@{preflight_script}"]
+    logger.info("EXECUTE | %s", " ".join(masked_display_cmd))
+
+    process = subprocess.run(
+        cmd,
+        cwd=str(cwd),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    output = (process.stdout or "") + (process.stderr or "")
+    if process.stdout:
+        logger.info(process.stdout.rstrip())
+    if process.stderr:
+        logger.error(process.stderr.rstrip())
+
+    if process.returncode != 0:
+        raise ExporterError(
+            f"Klaida: preflight SQL patikra baigesi su klaida code={process.returncode}"
+        )
+
+    privs = dict(PREFLIGHT_PRIV_KEYS)
+    roles = dict(PREFLIGHT_ROLE_KEYS)
+    capabilities = dict(PREFLIGHT_CAPABILITY_KEYS)
+
+    got_conn_ok = False
+    got_done = False
+    got_capability_line = False
+
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if line == "PREFLIGHT_CONN_OK":
+            got_conn_ok = True
+            continue
+        if line == "PREFLIGHT_DONE":
+            got_done = True
+            continue
+
+        if line.startswith("PREFLIGHT_PRIV:"):
+            parts = line.split(":", 2)
+            if len(parts) == 3 and parts[1] in privs:
+                privs[parts[1]] = parse_preflight_bool(parts[2])
+            continue
+
+        if line.startswith("PREFLIGHT_ROLE:"):
+            parts = line.split(":", 2)
+            if len(parts) == 3 and parts[1] in roles:
+                roles[parts[1]] = parse_preflight_bool(parts[2])
+            continue
+
+        if line.startswith("PREFLIGHT_CAPABILITY:"):
+            parts = line.split(":", 2)
+            if len(parts) == 3 and parts[1] in capabilities:
+                capabilities[parts[1]] = parse_preflight_bool(parts[2])
+                got_capability_line = True
+            continue
+
+    if not got_conn_ok:
+        raise ExporterError("Klaida: preflight negavo DB prisijungimo patvirtinimo.")
+    if not got_done:
+        raise ExporterError("Klaida: preflight SQL atsakymas nebaigtas - nera PREFLIGHT_DONE zymos.")
+    if not got_capability_line:
+        raise ExporterError("Klaida: preflight SQL negrazino capability informacijos.")
+
+    return privs, roles, capabilities
+
+
+def print_preflight_summary(
+    *,
+    privs: dict[str, int],
+    roles: dict[str, int],
+    capabilities: dict[str, int],
+    logger: logging.Logger,
+) -> None:
+    logger.info(
+        "PREFLIGHT RIGHTS | CREATE_SESSION=%s SELECT_ANY_DICTIONARY=%s DEBUG_ANY_PROCEDURE=%s SELECT_CATALOG_ROLE=%s",
+        bool_to_yes_no(privs["CREATE_SESSION"]),
+        bool_to_yes_no(privs["SELECT_ANY_DICTIONARY"]),
+        bool_to_yes_no(privs["DEBUG_ANY_PROCEDURE"]),
+        bool_to_yes_no(roles["SELECT_CATALOG_ROLE"]),
+    )
+    logger.info(
+        "PREFLIGHT CAPABILITIES | packages=%s procedures=%s functions=%s types=%s tables=%s views=%s",
+        bool_to_yes_no(capabilities["PACKAGES"]),
+        bool_to_yes_no(capabilities["PROCEDURES"]),
+        bool_to_yes_no(capabilities["FUNCTIONS"]),
+        bool_to_yes_no(capabilities["TYPES"]),
+        bool_to_yes_no(capabilities["TABLES"]),
+        bool_to_yes_no(capabilities["VIEWS"]),
+    )
+
+
+def validate_preflight_capabilities(
+    *,
+    requested_steps: set[str],
+    capabilities: dict[str, int],
+) -> None:
+    missing: list[str] = []
+
+    for step in sorted(requested_steps, key=STEP_PRIORITY.index):
+        capability_key = PREFLIGHT_CAPABILITY_BY_STEP[step]
+        if capabilities.get(capability_key, 0) != 1:
+            missing.append(PREFLIGHT_MISSING_LABEL_BY_STEP[step])
+
+    if missing:
+        raise ExporterError(
+            "Klaida: pagal naudotojo teises siame task negalimas eksportas siu tipams: "
+            + ", ".join(missing)
+        )
+
+
+def collect_requested_steps_for_preflight(
+    *,
+    env_name: str,
+    task_mode: bool,
+    env_export_objects: dict[str, dict[str, list[str]]],
+    schema_steps: Any,
+    catalog: dict[str, Any],
+    selected_schemas: set[str],
+    project_root: Path,
+    logger: logging.Logger,
+) -> set[str]:
+    requested_steps: set[str] = set()
+
+    if env_export_objects:
+        for schema_name, step_to_objects in env_export_objects.items():
+            if selected_schemas and schema_name not in selected_schemas:
+                continue
+
+            for step in STEP_PRIORITY:
+                objects = step_to_objects.get(step, [])
+                if not objects:
+                    continue
+                logger.info(
+                    "CHECK | schema=%s step=%s objects=%s",
+                    schema_name,
+                    step,
+                    len(objects),
+                )
+                requested_steps.add(step)
+
+        return requested_steps
+
+    if task_mode:
+        return requested_steps
+
+    if not isinstance(catalog, dict):
+        raise ExporterError("Config key 'catalog' must be a mapping when schema_steps mode is used.")
+
+    if not isinstance(schema_steps, dict):
+        return requested_steps
+
+    for schema_name_raw, steps_raw in schema_steps.items():
+        schema_name = str(schema_name_raw).strip().upper()
+        if selected_schemas and schema_name not in selected_schemas:
+            continue
+        if not isinstance(steps_raw, list) or not steps_raw:
+            continue
+
+        steps = validate_steps(steps_raw, env_name, schema_name)
+        schema_cfg = catalog.get(schema_name, {})
+        if not isinstance(schema_cfg, dict):
+            continue
+
+        for step in steps:
+            list_path_raw = str(schema_cfg.get(step, "")).strip()
+            if not list_path_raw:
+                continue
+
+            list_path = resolve_path(project_root, list_path_raw)
+            objects = read_object_list(list_path)
+            if not objects:
+                continue
+
+            logger.info(
+                "CHECK | schema=%s step=%s objects=%s",
+                schema_name,
+                step,
+                len(objects),
+            )
+            requested_steps.add(step)
+
+    return requested_steps
+
+
 def validate_steps(steps: list[str], env_name: str, schema: str) -> list[str]:
     normalized: list[str] = []
     for step in steps:
@@ -1022,6 +1322,7 @@ def write_post_check_report(
 
 def main() -> int:
     args = parse_args()
+    preflight_mode = bool(args.preflight or args.preflight_check)
 
     if args.task_env and not args.task_name:
         raise ExporterError("task_env argument requires task_name.")
@@ -1096,6 +1397,17 @@ def main() -> int:
     scripts_dir = resolve_path(project_root, str(defaults.get("scripts_dir", "scripts")))
     generated_sql_dir = logs_dir / "generated_sql" / timestamp
     generated_sql_dir.mkdir(parents=True, exist_ok=True)
+
+    if preflight_mode:
+        logger.info("MODE | PREFLIGHT")
+        logger.info("PREFLIGHT | validating sqlplus executable")
+        validate_sqlplus_executable(sqlplus_executable, project_root)
+        logger.info("PREFLIGHT | validating required sql scripts")
+        validate_required_scripts(scripts_dir)
+        if args.dry_run:
+            logger.info("PREFLIGHT | --dry-run ignored in preflight mode")
+
+    preflight_script = scripts_dir / "preflight_check.sql"
 
     strict_mode = determine_strict_mode(config, args)
     if task_mode:
@@ -1177,7 +1489,7 @@ def main() -> int:
             }
         )
 
-        if args.dry_run:
+        if args.dry_run and not preflight_mode:
             try:
                 connection = resolve_connection_string(project_root, env_name, env_config)
             except ExporterError as exc:
@@ -1231,6 +1543,45 @@ def main() -> int:
 
         logger.info("ENV START | %s", env_name)
         processed_envs.append(env_name)
+
+        if preflight_mode:
+            try:
+                requested_steps = collect_requested_steps_for_preflight(
+                    env_name=env_name,
+                    task_mode=task_mode,
+                    env_export_objects=env_export_objects,
+                    schema_steps=schema_steps,
+                    catalog=catalog,
+                    selected_schemas=selected_schemas,
+                    project_root=project_root,
+                    logger=logger,
+                )
+                logger.info("PREFLIGHT | checking Oracle connection and privileges")
+                privs, roles, capabilities = run_preflight_sqlplus(
+                    sqlplus_executable=sqlplus_executable,
+                    connection=connection,
+                    preflight_script=preflight_script,
+                    cwd=project_root,
+                    env=env_subprocess_env,
+                    logger=logger,
+                )
+                print_preflight_summary(
+                    privs=privs,
+                    roles=roles,
+                    capabilities=capabilities,
+                    logger=logger,
+                )
+                validate_preflight_capabilities(
+                    requested_steps=requested_steps,
+                    capabilities=capabilities,
+                )
+                logger.info("PREFLIGHT | task objektu tipams teisiu pakanka")
+                logger.info("ENV DONE  | %s", env_name)
+                summary.executed_steps += 1
+            except ExporterError:
+                logger.exception("PREFLIGHT FAIL | env=%s", env_name)
+                summary.failed_steps += 1
+            continue
 
         if env_export_objects:
             for schema_name, step_to_objects in env_export_objects.items():
@@ -1318,7 +1669,9 @@ def main() -> int:
 
         logger.info("ENV DONE  | %s", env_name)
 
-    if not args.dry_run and post_check_enabled:
+    if preflight_mode:
+        logger.info("POST-CHECK SKIP | preflight mode")
+    elif not args.dry_run and post_check_enabled:
         logger.info("POST-CHECK START | scanning exported artifacts for ORA/SP2/PLS/TNS signatures")
         all_findings: list[tuple[Path, int, str]] = []
         total_scanned_files = 0
@@ -1378,6 +1731,12 @@ def main() -> int:
         logger.info("POST-CHECK SKIP | dry-run mode")
     else:
         logger.info("POST-CHECK SKIP | disabled by configuration or CLI")
+
+    if preflight_mode:
+        preflight_status = "ok" if summary.failed_steps == 0 else "failed"
+        logger.info("RUN END | mode=preflight status=%s", preflight_status)
+        logger.info("LOG FILE  | %s", log_file)
+        return 1 if summary.failed_steps > 0 else 0
 
     logger.info(
         "RUN END   | total=%s executed=%s skipped=%s failed=%s post_check_scanned=%s post_check_findings=%s",

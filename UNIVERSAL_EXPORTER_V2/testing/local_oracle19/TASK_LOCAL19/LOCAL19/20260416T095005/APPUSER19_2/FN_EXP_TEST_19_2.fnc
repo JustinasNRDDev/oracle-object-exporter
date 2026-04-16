@@ -1,0 +1,9 @@
+create or replace FUNCTION APPUSER19_2.FN_EXP_TEST_19_2
+  RETURN VARCHAR2
+IS
+BEGIN
+  RETURN 'APPUSER19_2:OK';
+END;
+/
+show errors
+

@@ -91,6 +91,8 @@ oracle_exporter.exe TASK_123 DEV APPUSER19
 Papildomi variantai:
 
 oracle_exporter.exe TASK_123 DEV --dry-run
+oracle_exporter.exe TASK_123 DEV --preflight
+oracle_exporter.exe TASK_123 DEV --check
 oracle_exporter.exe TASK_123 DEV --nls-lang Lithuanian_lithuania.utf8
 oracle_exporter.exe TASK_123 DEV --task-root tasks --task-objects-file objects.txt
 
@@ -118,6 +120,32 @@ Svarbi praktine pastaba:
 
 - Gali buti sukurti tik planavimo artefaktai (pvz. logai ar laikina run struktura), bet ne realus objektu DDL/source turinys.
 - Jei reikia tik pasitikrinti plana pries gyva paleidima, pirma naudokite `--dry-run`.
+
+## Ka tiksliai duoda --preflight
+
+`--preflight` (alias `--check`) yra paruosties patikra pries realu eksporta.
+
+Kas ivyksta su `--preflight`:
+
+1. Patikrinama, ar pasiekiamas `sqlplus` (`PATH` arba `sqlplus_executable`).
+2. Patikrinama, ar yra visi privalomi `scripts/*.sql` failai (iskaitant `preflight_check.sql`).
+3. Nuskaitymas ir validacija:
+	- `config/exporter.yaml`
+	- `tasks/<TASK>/objects.txt`
+4. Patikrinamas prisijungimas prie Oracle DB.
+5. Surenkama Oracle teisiu ir capability suvestine pagal tipus (`packages`, `procedures`, `functions`, `types`, `tables`, `views`).
+6. Task'e prasomi objektu tipai palyginami su realiomis naudotojo galimybemis.
+
+Ko `--preflight` nedaro:
+
+1. Neeksportuoja objektu failu.
+2. Nevykdo realiu objekto eksporto SQL skriptu.
+
+Pavyzdziai:
+
+oracle_exporter.exe TASK_123 DEV --preflight
+oracle_exporter.exe TASK_123 DEV APPUSER19 --preflight
+oracle_exporter.exe TASK_123 DEV --check
 
 Svarbu: exe tikisi, kad salia bus `config/`, `scripts/` ir `tasks/` katalogai.
 

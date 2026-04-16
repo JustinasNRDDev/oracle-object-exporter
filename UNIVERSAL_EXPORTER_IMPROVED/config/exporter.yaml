@@ -44,6 +44,42 @@ environments:
       procedures: sql
       functions: sql
 
+  LOCAL19:
+    connection_file: "%ORACLE19_CONN%\\connDEV.conf"
+    ddl_source: dba
+    nls_lang: Lithuanian_lithuania.utf8
+    schema_steps:
+      APPUSER19:
+        - packages
+        - procedures
+        - functions
+        - types
+        - table_ddl
+        - view_ddl
+      APPUSER19_2:
+        - packages
+        - procedures
+        - functions
+        - types
+        - view_ddl
+
+catalog:
+  APPUSER19:
+    packages: testing/local_oracle19/data/APPUSER19_packages.txt
+    procedures: testing/local_oracle19/data/APPUSER19_procedures.txt
+    functions: testing/local_oracle19/data/APPUSER19_functions.txt
+    types: testing/local_oracle19/data/APPUSER19_types.txt
+    table_ddl: testing/local_oracle19/data/table_list_APPUSER19.txt
+    view_ddl: testing/local_oracle19/data/view_list_APPUSER19.txt
+
+  APPUSER19_2:
+    packages: testing/local_oracle19/data/APPUSER19_2_packages.txt
+    procedures: testing/local_oracle19/data/APPUSER19_2_procedures.txt
+    functions: testing/local_oracle19/data/APPUSER19_2_functions.txt
+    types: testing/local_oracle19/data/APPUSER19_2_types.txt
+    table_ddl: testing/local_oracle19/data/table_list_APPUSER19_2.txt
+    view_ddl: testing/local_oracle19/data/view_list_APPUSER19_2.txt
+
 output:
   routines_subdirectory: ""
   tables_subdirectory: TABLES
