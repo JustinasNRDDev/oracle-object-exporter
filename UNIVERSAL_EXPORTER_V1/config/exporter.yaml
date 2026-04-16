@@ -23,7 +23,7 @@ environments:
   DEV:
     connection_file: "%ORACLE19_CONN%\\connDEV.conf"
     ddl_source: dba
-    nls_lang: Lithuanian_lithuania.utf8
+    nls_lang: LITHUANIAN_LITHUANIA.UTF8
     export_extensions:
       procedures: sql
       functions: sql
@@ -31,7 +31,7 @@ environments:
   TEST:
     connection_file: "%ORACLE19_CONN%\\connTEST.conf"
     ddl_source: dba
-    nls_lang: Lithuanian_lithuania.utf8
+    nls_lang: LITHUANIAN_LITHUANIA.UTF8
     export_extensions:
       procedures: sql
       functions: sql
@@ -39,7 +39,7 @@ environments:
   PROD:
     connection_file: "%ORACLE19_CONN%\\connPROD.conf"
     ddl_source: dba
-    nls_lang: Lithuanian_lithuania.utf8
+    nls_lang: LITHUANIAN_LITHUANIA.UTF8
     export_extensions:
       procedures: sql
       functions: sql
@@ -47,7 +47,7 @@ environments:
   LOCAL19:
     connection_file: "%ORACLE19_CONN%\\connDEV.conf"
     ddl_source: dba
-    nls_lang: Lithuanian_lithuania.utf8
+    nls_lang: LITHUANIAN_LITHUANIA.UTF8
     schema_steps:
       APPUSER19:
         - packages
@@ -85,3 +85,4 @@ output:
   tables_subdirectory: TABLES
   views_subdirectory: VIEWS
   types_subdirectory: TYPES
+

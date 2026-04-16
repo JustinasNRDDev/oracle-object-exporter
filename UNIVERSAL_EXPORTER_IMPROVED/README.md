@@ -28,7 +28,7 @@ Failas: `tasks/TASK_123/objects.txt`
 Pavyzdys:
 
 [DEV]
-nls_lang: Lithuanian_lithuania.utf8
+nls_lang: LITHUANIAN_LITHUANIA.UTF8
 schema:APPUSER19
 packages: PCK_1,PCK_2,PCK_3
 procedures: PRC_1,PRC_2,PRC_3
@@ -88,7 +88,7 @@ Papildomi variantai:
 python run_export.py TASK_123 DEV --dry-run
 python run_export.py TASK_123 DEV --preflight
 python run_export.py TASK_123 DEV --check
-python run_export.py TASK_123 DEV --nls-lang Lithuanian_lithuania.utf8
+python run_export.py TASK_123 DEV --nls-lang LITHUANIAN_LITHUANIA.UTF8
 python run_export.py TASK_123 DEV --task-root tasks --task-objects-file objects.txt
 
 ## Ka tiksliai duoda --dry-run
@@ -211,3 +211,4 @@ Logai:
 - logs/post_check_<timestamp>.txt (jei rastos klaidos)
 
 Post-check tikrina ORA/SP2/PLS/TNS parasus ir skenuoja failus pagal sukonfiguruotus export_extensions.
+

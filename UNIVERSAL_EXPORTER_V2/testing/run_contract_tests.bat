@@ -302,7 +302,7 @@ echo environments:
 echo   DEV:
 echo     connection_file: "!WC_CONN_FILE!"
 echo     ddl_source: !WC_DDL!
-echo     nls_lang: Lithuanian_lithuania.utf8
+echo     nls_lang: LITHUANIAN_LITHUANIA.UTF8
 ) > "!WC_CFG_PATH!"
 
 endlocal

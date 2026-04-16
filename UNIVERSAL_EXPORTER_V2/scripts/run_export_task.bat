@@ -609,7 +609,7 @@ echo # Atsikomentuokite reikalingas eilutes ir pakeiskite objektu pavadinimus.
 echo # Galimi objektu tipai: packages, procedures, functions, tables, views, types.
 echo.
 echo # [DEV]
-echo # nls_lang: Lithuanian_lithuania.utf8
+echo # nls_lang: LITHUANIAN_LITHUANIA.UTF8
 echo # schema:APPUSER19
 echo # packages: PKG_SAMPLE
 echo # procedures: PR_SAMPLE
@@ -619,6 +619,15 @@ echo # views: VW_SAMPLE
 echo # types: TP_SAMPLE
 echo.
 echo # [TEST]
+echo # schema:APPUSER19
+echo # packages:
+echo # procedures:
+echo # functions:
+echo # tables:
+echo # views:
+echo # types:
+echo.
+echo # [PREPROD]
 echo # schema:APPUSER19
 echo # packages:
 echo # procedures:
@@ -646,6 +655,15 @@ exit /b 0
 
 :WriteObjectsTemplateInteractive
 set "TASK_TEMPLATE_PATH=%~1"
+set "WIZARD_DEV_READY=0"
+set "WIZARD_DEV_NLS_VALUE="
+set "WIZARD_DEV_SCHEMA_VALUE="
+set "WIZARD_DEV_PACKAGES_VALUE="
+set "WIZARD_DEV_PROCEDURES_VALUE="
+set "WIZARD_DEV_FUNCTIONS_VALUE="
+set "WIZARD_DEV_TABLES_VALUE="
+set "WIZARD_DEV_VIEWS_VALUE="
+set "WIZARD_DEV_TYPES_VALUE="
 
 (
 echo # Task eksportavimo aprasas.
@@ -663,18 +681,73 @@ if errorlevel 1 (
 call :CollectInteractiveEnv "%TASK_TEMPLATE_PATH%" "DEV"
 if errorlevel 1 exit /b 1
 
-call :CollectInteractiveEnv "%TASK_TEMPLATE_PATH%" "TEST"
+if "%WIZARD_LAST_ENV_WRITTEN%"=="1" (
+    set "WIZARD_DEV_READY=1"
+    set "WIZARD_DEV_NLS_VALUE=%WIZARD_LAST_ENV_NLS_VALUE%"
+    set "WIZARD_DEV_SCHEMA_VALUE=%WIZARD_LAST_ENV_SCHEMA_VALUE%"
+    set "WIZARD_DEV_PACKAGES_VALUE=%WIZARD_LAST_ENV_PACKAGES_VALUE%"
+    set "WIZARD_DEV_PROCEDURES_VALUE=%WIZARD_LAST_ENV_PROCEDURES_VALUE%"
+    set "WIZARD_DEV_FUNCTIONS_VALUE=%WIZARD_LAST_ENV_FUNCTIONS_VALUE%"
+    set "WIZARD_DEV_TABLES_VALUE=%WIZARD_LAST_ENV_TABLES_VALUE%"
+    set "WIZARD_DEV_VIEWS_VALUE=%WIZARD_LAST_ENV_VIEWS_VALUE%"
+    set "WIZARD_DEV_TYPES_VALUE=%WIZARD_LAST_ENV_TYPES_VALUE%"
+)
+
+call :CollectInteractiveEnvWithOptionalCopy "%TASK_TEMPLATE_PATH%" "TEST"
 if errorlevel 1 exit /b 1
 
-call :CollectInteractiveEnv "%TASK_TEMPLATE_PATH%" "PROD"
+call :CollectInteractiveEnvWithOptionalCopy "%TASK_TEMPLATE_PATH%" "PREPROD"
+if errorlevel 1 exit /b 1
+
+call :CollectInteractiveEnvWithOptionalCopy "%TASK_TEMPLATE_PATH%" "PROD"
 if errorlevel 1 exit /b 1
 
 echo Interaktyvus task failas sukurtas: "%TASK_TEMPLATE_PATH%".
 exit /b 0
 
+:CollectInteractiveEnvWithOptionalCopy
+set "TASK_TEMPLATE_PATH=%~1"
+set "ENV_LABEL=%~2"
+
+if "%WIZARD_DEV_READY%"=="1" (
+    echo.
+    set "COPY_DEV_ANSWER="
+    set /p COPY_DEV_ANSWER="Ar perkelti DEV parametrus i %ENV_LABEL%? (Y/N, Enter=N): "
+    call :Trim "!COPY_DEV_ANSWER!" COPY_DEV_ANSWER
+    if defined COPY_DEV_ANSWER set "COPY_DEV_ANSWER=!COPY_DEV_ANSWER:~0,1!"
+
+    if /I "!COPY_DEV_ANSWER!"=="Y" (
+        set "APPEND_ENV_TYPES_VALUE=%WIZARD_DEV_TYPES_VALUE%"
+        call :AppendEnvTemplate "%TASK_TEMPLATE_PATH%" "%ENV_LABEL%" "%WIZARD_DEV_NLS_VALUE%" "%WIZARD_DEV_SCHEMA_VALUE%" "%WIZARD_DEV_PACKAGES_VALUE%" "%WIZARD_DEV_PROCEDURES_VALUE%" "%WIZARD_DEV_FUNCTIONS_VALUE%" "%WIZARD_DEV_TABLES_VALUE%" "%WIZARD_DEV_VIEWS_VALUE%"
+        if errorlevel 1 exit /b 1
+        echo Nukopijuoti DEV parametrai i %ENV_LABEL%.
+        exit /b 0
+    )
+
+    if /I "!COPY_DEV_ANSWER!"=="YES" (
+        set "APPEND_ENV_TYPES_VALUE=%WIZARD_DEV_TYPES_VALUE%"
+        call :AppendEnvTemplate "%TASK_TEMPLATE_PATH%" "%ENV_LABEL%" "%WIZARD_DEV_NLS_VALUE%" "%WIZARD_DEV_SCHEMA_VALUE%" "%WIZARD_DEV_PACKAGES_VALUE%" "%WIZARD_DEV_PROCEDURES_VALUE%" "%WIZARD_DEV_FUNCTIONS_VALUE%" "%WIZARD_DEV_TABLES_VALUE%" "%WIZARD_DEV_VIEWS_VALUE%"
+        if errorlevel 1 exit /b 1
+        echo Nukopijuoti DEV parametrai i %ENV_LABEL%.
+        exit /b 0
+    )
+)
+
+call :CollectInteractiveEnv "%TASK_TEMPLATE_PATH%" "%ENV_LABEL%"
+exit /b %errorlevel%
+
 :CollectInteractiveEnv
 set "TASK_TEMPLATE_PATH=%~1"
 set "ENV_LABEL=%~2"
+set "WIZARD_LAST_ENV_WRITTEN=0"
+set "WIZARD_LAST_ENV_NLS_VALUE="
+set "WIZARD_LAST_ENV_SCHEMA_VALUE="
+set "WIZARD_LAST_ENV_PACKAGES_VALUE="
+set "WIZARD_LAST_ENV_PROCEDURES_VALUE="
+set "WIZARD_LAST_ENV_FUNCTIONS_VALUE="
+set "WIZARD_LAST_ENV_TABLES_VALUE="
+set "WIZARD_LAST_ENV_VIEWS_VALUE="
+set "WIZARD_LAST_ENV_TYPES_VALUE="
 
 echo.
 set "ENV_INCLUDE_ANSWER="
@@ -689,9 +762,7 @@ call :AppendCommentedEnvTemplate "%TASK_TEMPLATE_PATH%" "%ENV_LABEL%"
 exit /b 0
 
 :CollectInteractiveEnvYes
-set "ENV_NLS_RAW="
-set /p ENV_NLS_RAW="Nurodykite nls_lang %ENV_LABEL% aplinkai (Enter/skip=praleisti): "
-call :NormalizeWizardInput "%ENV_NLS_RAW%" ENV_NLS_VALUE
+call :PromptNlsLang "%ENV_LABEL%" ENV_NLS_VALUE
 
 set "ENV_SCHEMA_RAW="
 set /p ENV_SCHEMA_RAW="Iveskite schema %ENV_LABEL% aplinkai DIDZIOSIOMIS (Enter/skip=praleisti): "
@@ -727,15 +798,92 @@ set "ENV_TYPES_RAW="
 set /p ENV_TYPES_RAW="Iveskite types sarasa %ENV_LABEL% aplinkai (kableliais, Enter/skip=praleisti): "
 call :NormalizeWizardInput "%ENV_TYPES_RAW%" ENV_TYPES_VALUE
 
+set "APPEND_ENV_TYPES_VALUE=%ENV_TYPES_VALUE%"
+call :AppendEnvTemplate "%TASK_TEMPLATE_PATH%" "%ENV_LABEL%" "%ENV_NLS_VALUE%" "%ENV_SCHEMA_VALUE%" "%ENV_PACKAGES_VALUE%" "%ENV_PROCEDURES_VALUE%" "%ENV_FUNCTIONS_VALUE%" "%ENV_TABLES_VALUE%" "%ENV_VIEWS_VALUE%"
+if errorlevel 1 exit /b 1
+
+set "WIZARD_LAST_ENV_WRITTEN=1"
+set "WIZARD_LAST_ENV_NLS_VALUE=%ENV_NLS_VALUE%"
+set "WIZARD_LAST_ENV_SCHEMA_VALUE=%ENV_SCHEMA_VALUE%"
+set "WIZARD_LAST_ENV_PACKAGES_VALUE=%ENV_PACKAGES_VALUE%"
+set "WIZARD_LAST_ENV_PROCEDURES_VALUE=%ENV_PROCEDURES_VALUE%"
+set "WIZARD_LAST_ENV_FUNCTIONS_VALUE=%ENV_FUNCTIONS_VALUE%"
+set "WIZARD_LAST_ENV_TABLES_VALUE=%ENV_TABLES_VALUE%"
+set "WIZARD_LAST_ENV_VIEWS_VALUE=%ENV_VIEWS_VALUE%"
+set "WIZARD_LAST_ENV_TYPES_VALUE=%ENV_TYPES_VALUE%"
+
+exit /b 0
+
+:PromptNlsLang
+set "ENV_LABEL=%~1"
+set "NLS_VALUE="
+
+:PromptNlsLangLoop
+echo Pasirinkite nls_lang %ENV_LABEL% aplinkai:
+echo   1 - LITHUANIAN_LITHUANIA.UTF8
+echo   2 - LITHUANIAN_LITHUANIA.BLT8MSWIN1257
+echo   3 - Ivesti savo
+set "ENV_NLS_CHOICE_RAW="
+set /p ENV_NLS_CHOICE_RAW="Pasirinkimas (1/2/3, Enter/skip=praleisti): "
+call :NormalizeWizardInput "%ENV_NLS_CHOICE_RAW%" ENV_NLS_CHOICE
+
+if not defined ENV_NLS_CHOICE goto PromptNlsLangDone
+
+if "%ENV_NLS_CHOICE%"=="1" (
+    set "NLS_VALUE=LITHUANIAN_LITHUANIA.UTF8"
+    goto PromptNlsLangDone
+)
+
+if "%ENV_NLS_CHOICE%"=="2" (
+    set "NLS_VALUE=LITHUANIAN_LITHUANIA.BLT8MSWIN1257"
+    goto PromptNlsLangDone
+)
+
+if "%ENV_NLS_CHOICE%"=="3" (
+    set "ENV_NLS_CUSTOM_RAW="
+    set /p ENV_NLS_CUSTOM_RAW="Iveskite savo nls_lang reiksme (Enter/skip=praleisti): "
+    call :NormalizeWizardInput "!ENV_NLS_CUSTOM_RAW!" NLS_VALUE
+    goto PromptNlsLangDone
+)
+
+if /I "%ENV_NLS_CHOICE%"=="LITHUANIAN_LITHUANIA.UTF8" (
+    set "NLS_VALUE=LITHUANIAN_LITHUANIA.UTF8"
+    goto PromptNlsLangDone
+)
+
+if /I "%ENV_NLS_CHOICE%"=="LITHUANIAN_LITHUANIA.BLT8MSWIN1257" (
+    set "NLS_VALUE=LITHUANIAN_LITHUANIA.BLT8MSWIN1257"
+    goto PromptNlsLangDone
+)
+
+echo Neteisingas pasirinkimas. Iveskite 1, 2, 3 arba palikite tuscia.
+goto PromptNlsLangLoop
+
+:PromptNlsLangDone
+set "%~2=%NLS_VALUE%"
+exit /b 0
+
+:AppendEnvTemplate
+set "TASK_TEMPLATE_PATH=%~1"
+set "ENV_LABEL=%~2"
+set "ENV_TEMPLATE_NLS=%~3"
+set "ENV_TEMPLATE_SCHEMA=%~4"
+set "ENV_TEMPLATE_PACKAGES=%~5"
+set "ENV_TEMPLATE_PROCEDURES=%~6"
+set "ENV_TEMPLATE_FUNCTIONS=%~7"
+set "ENV_TEMPLATE_TABLES=%~8"
+set "ENV_TEMPLATE_VIEWS=%~9"
+set "ENV_TEMPLATE_TYPES=%APPEND_ENV_TYPES_VALUE%"
+
 >> "%TASK_TEMPLATE_PATH%" echo [%ENV_LABEL%]
-if defined ENV_NLS_VALUE >> "%TASK_TEMPLATE_PATH%" echo nls_lang:%ENV_NLS_VALUE%
->> "%TASK_TEMPLATE_PATH%" echo schema:%ENV_SCHEMA_VALUE%
->> "%TASK_TEMPLATE_PATH%" echo packages:%ENV_PACKAGES_VALUE%
->> "%TASK_TEMPLATE_PATH%" echo procedures:%ENV_PROCEDURES_VALUE%
->> "%TASK_TEMPLATE_PATH%" echo functions:%ENV_FUNCTIONS_VALUE%
->> "%TASK_TEMPLATE_PATH%" echo tables:%ENV_TABLES_VALUE%
->> "%TASK_TEMPLATE_PATH%" echo views:%ENV_VIEWS_VALUE%
->> "%TASK_TEMPLATE_PATH%" echo types:%ENV_TYPES_VALUE%
+if defined ENV_TEMPLATE_NLS >> "%TASK_TEMPLATE_PATH%" echo nls_lang:%ENV_TEMPLATE_NLS%
+>> "%TASK_TEMPLATE_PATH%" echo schema:%ENV_TEMPLATE_SCHEMA%
+>> "%TASK_TEMPLATE_PATH%" echo packages:%ENV_TEMPLATE_PACKAGES%
+>> "%TASK_TEMPLATE_PATH%" echo procedures:%ENV_TEMPLATE_PROCEDURES%
+>> "%TASK_TEMPLATE_PATH%" echo functions:%ENV_TEMPLATE_FUNCTIONS%
+>> "%TASK_TEMPLATE_PATH%" echo tables:%ENV_TEMPLATE_TABLES%
+>> "%TASK_TEMPLATE_PATH%" echo views:%ENV_TEMPLATE_VIEWS%
+>> "%TASK_TEMPLATE_PATH%" echo types:%ENV_TEMPLATE_TYPES%
 >> "%TASK_TEMPLATE_PATH%" echo.
 exit /b 0
 
@@ -1501,3 +1649,4 @@ echo   %~nx0 -TaskName TASK_123 -EnvironmentName DEV -SchemaName APPUSER19 -DryR
 echo   %~nx0 -TaskName TASK_123 -EnvironmentName DEV -SchemaName APPUSER19 -Preflight
 echo.
 exit /b 1
+

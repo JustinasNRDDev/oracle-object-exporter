@@ -3,7 +3,7 @@
 
 [DEV]
 # nls_lang is optional; if omitted, config/exporter.yaml defaults are used.
-# nls_lang: Lithuanian_lithuania.utf8
+# nls_lang: LITHUANIAN_LITHUANIA.UTF8
 schema:APPUSER19
 packages:
 procedures:
@@ -29,3 +29,4 @@ functions:
 tables:
 views:
 types:
+

@@ -1,7 +1,7 @@
 # Local Oracle 19c task for BAT runtime integration checks
 
 [LOCAL19]
-nls_lang: Lithuanian_lithuania.utf8
+nls_lang: LITHUANIAN_LITHUANIA.UTF8
 schema:APPUSER19
 packages: PKG_EXP_TEST_19
 procedures: PR_EXP_TEST_19
@@ -16,3 +16,4 @@ procedures: PR_EXP_TEST_19_2
 functions: FN_EXP_TEST_19_2
 views: VW_EXP_TEST_19_2
 types: TP_EXP_TEST_19_2
+
