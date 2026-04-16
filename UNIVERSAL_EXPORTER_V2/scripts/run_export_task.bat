@@ -6,7 +6,6 @@ if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 for %%I in ("%SCRIPT_DIR%\..") do set "PROJECT_ROOT=%%~fI"
 
 set "SCRIPTS_DIR=%PROJECT_ROOT%\scripts"
-set "TASKS_DIR=%PROJECT_ROOT%\tasks"
 set "LOGS_DIR=%PROJECT_ROOT%\logs"
 set "OUTPUT_BASE=%PROJECT_ROOT%\EXPORTED_OBJECTS"
 set "DEFAULT_CONFIG=%PROJECT_ROOT%\config\exporter.yaml"
@@ -31,7 +30,7 @@ if errorlevel 1 exit /b 1
 if not defined TASK_NAME goto usage
 if not defined ENV_NAME goto usage
 
-call :ResolveTaskFile "%TASK_NAME%" TASK_FILE TASK_LABEL
+call :ResolveTaskFile "%TASK_NAME%" TASK_FILE TASK_LABEL TASK_DIR
 if errorlevel 1 exit /b 1
 
 if not exist "%CONFIG_FILE%" (
@@ -103,7 +102,7 @@ call :BuildTimestamp RUN_TIMESTAMP
 if not exist "%LOGS_DIR%" mkdir "%LOGS_DIR%" >nul 2>&1
 set "LOG_FILE=%LOGS_DIR%\bat_export_%RUN_TIMESTAMP%.log"
 
-set "OUTPUT_ROOT=%OUTPUT_BASE%\%TASK_LABEL%\%ENV_NAME%\%RUN_TIMESTAMP%"
+set "OUTPUT_ROOT=%TASK_DIR%\%ENV_NAME%\%RUN_TIMESTAMP%"
 if not exist "%OUTPUT_ROOT%" mkdir "%OUTPUT_ROOT%" >nul 2>&1
 
 set /a SUMMARY_TOTAL=0
@@ -360,46 +359,146 @@ exit /b 0
 set "TASK_INPUT=%~1"
 set "TASK_FILE_PATH="
 set "TASK_LABEL_VALUE="
+set "TASK_DIR_PATH="
 
 call :ExpandEnvPath "%TASK_INPUT%" TASK_INPUT_EXPANDED
 if not defined TASK_INPUT_EXPANDED set "TASK_INPUT_EXPANDED=%TASK_INPUT%"
+call :StripQuotes "%TASK_INPUT_EXPANDED%" TASK_INPUT_EXPANDED
+call :Trim "%TASK_INPUT_EXPANDED%" TASK_INPUT_EXPANDED
 
-call :IsAbsolutePath "%TASK_INPUT_EXPANDED%" TASK_INPUT_IS_ABSOLUTE
-if "%TASK_INPUT_IS_ABSOLUTE%"=="1" (
-    call :TryTaskCandidate "%TASK_INPUT_EXPANDED%" TASK_FILE_PATH
-) else (
-    call :TryTaskCandidate "%PROJECT_ROOT%\%TASK_INPUT_EXPANDED%" TASK_FILE_PATH
-    if not defined TASK_FILE_PATH call :TryTaskCandidate "%TASKS_DIR%\%TASK_INPUT_EXPANDED%" TASK_FILE_PATH
-)
-
-if not defined TASK_FILE_PATH (
-    echo Klaida: task failas nerastas. Patikrinkite TASK pavadinima arba kelia: %TASK_INPUT%.
+if not defined TASK_INPUT_EXPANDED (
+    echo Klaida: nenurodytas TASK pavadinimas.
     exit /b 1
 )
 
+call :IsAbsolutePath "%TASK_INPUT_EXPANDED%" TASK_INPUT_IS_ABSOLUTE
+if "%TASK_INPUT_IS_ABSOLUTE%"=="1" (
+    set "TASK_DIR_PATH=%TASK_INPUT_EXPANDED%"
+) else (
+    set "TASK_DIR_PATH=%OUTPUT_BASE%\%TASK_INPUT_EXPANDED%"
+)
+
+for %%I in ("%TASK_DIR_PATH%") do set "TASK_DIR_PATH=%%~fI"
+if "%TASK_DIR_PATH:~-1%"=="\" set "TASK_DIR_PATH=%TASK_DIR_PATH:~0,-1%"
+set "TASK_FILE_PATH=%TASK_DIR_PATH%\objects.txt"
+
+call :EnsureTaskFolderExists "%TASK_DIR_PATH%" "%TASK_FILE_PATH%"
+if errorlevel 1 exit /b 1
+
+if not exist "%TASK_FILE_PATH%" (
+    call :EnsureTaskObjectsFile "%TASK_DIR_PATH%" "%TASK_FILE_PATH%"
+    if errorlevel 1 exit /b 1
+)
+
 for %%I in ("%TASK_FILE_PATH%") do set "TASK_FILE_PATH=%%~fI"
-for %%I in ("%TASK_FILE_PATH%") do set "TASK_PARENT=%%~dpI"
-if "%TASK_PARENT:~-1%"=="\" set "TASK_PARENT=%TASK_PARENT:~0,-1%"
-for %%I in ("%TASK_PARENT%") do set "TASK_LABEL_VALUE=%%~nI"
-if not defined TASK_LABEL_VALUE for %%I in ("%TASK_FILE_PATH%") do set "TASK_LABEL_VALUE=%%~nI"
+for %%I in ("%TASK_DIR_PATH%") do set "TASK_LABEL_VALUE=%%~nI"
+
+if not defined TASK_LABEL_VALUE (
+    echo Klaida: nepavyko nustatyti task aplanko pavadinimo is "%TASK_DIR_PATH%".
+    exit /b 1
+)
 
 set "%~2=%TASK_FILE_PATH%"
 set "%~3=%TASK_LABEL_VALUE%"
+if not "%~4"=="" set "%~4=%TASK_DIR_PATH%"
 exit /b 0
 
-:TryTaskCandidate
-set "%~2="
-set "CANDIDATE=%~1"
+:EnsureTaskFolderExists
+set "TASK_DIR_TO_CHECK=%~1"
+set "TASK_FILE_TO_CREATE=%~2"
 
-if exist "%CANDIDATE%\objects.txt" (
-    set "%~2=%CANDIDATE%\objects.txt"
-    exit /b 0
+if exist "%TASK_DIR_TO_CHECK%\." exit /b 0
+
+echo.
+echo Nerastas task aplankas "%TASK_DIR_TO_CHECK%".
+set "CREATE_TASK_DIR_ANSWER="
+set /p CREATE_TASK_DIR_ANSWER="Ar sukurti si aplanka su objects.txt failo sablonu? (Y/N): "
+
+if /I not "%CREATE_TASK_DIR_ANSWER%"=="Y" if /I not "%CREATE_TASK_DIR_ANSWER%"=="YES" (
+    echo Vykdymas nutrauktas. Task aplankas nebuvo sukurtas.
+    exit /b 1
 )
 
-if exist "%CANDIDATE%" (
-    set "%~2=%CANDIDATE%"
-    exit /b 0
+mkdir "%TASK_DIR_TO_CHECK%" >nul 2>&1
+if errorlevel 1 (
+    echo Klaida: nepavyko sukurti task aplanko "%TASK_DIR_TO_CHECK%".
+    exit /b 1
 )
+
+call :WriteObjectsTemplate "%TASK_FILE_TO_CREATE%"
+if errorlevel 1 exit /b 1
+
+echo Sukurtas task aplankas ir sablonas: "%TASK_FILE_TO_CREATE%".
+exit /b 0
+
+:EnsureTaskObjectsFile
+set "TASK_DIR_TO_CHECK=%~1"
+set "TASK_FILE_TO_CREATE=%~2"
+
+echo.
+echo Nerastas task failas "%TASK_FILE_TO_CREATE%".
+set "CREATE_TASK_FILE_ANSWER="
+set /p CREATE_TASK_FILE_ANSWER="Ar sukurti objects.txt sablona siame aplanke? (Y/N): "
+
+if /I not "%CREATE_TASK_FILE_ANSWER%"=="Y" if /I not "%CREATE_TASK_FILE_ANSWER%"=="YES" (
+    echo Vykdymas nutrauktas. objects.txt failas nebuvo sukurtas.
+    exit /b 1
+)
+
+if not exist "%TASK_DIR_TO_CHECK%\." mkdir "%TASK_DIR_TO_CHECK%" >nul 2>&1
+if errorlevel 1 (
+    echo Klaida: nepavyko sukurti task aplanko "%TASK_DIR_TO_CHECK%".
+    exit /b 1
+)
+
+call :WriteObjectsTemplate "%TASK_FILE_TO_CREATE%"
+if errorlevel 1 exit /b 1
+
+echo Sukurtas sablonas: "%TASK_FILE_TO_CREATE%".
+exit /b 0
+
+:WriteObjectsTemplate
+set "TASK_TEMPLATE_PATH=%~1"
+
+(
+echo # Task eksportavimo aprasas.
+echo # Atsikomentuokite reikalingas eilutes ir pakeiskite objektu pavadinimus.
+echo # Galimi objektu tipai: packages, procedures, functions, tables, views, types.
+echo.
+echo # [DEV]
+echo # nls_lang: Lithuanian_lithuania.utf8
+echo # schema:APPUSER19
+echo # packages: PKG_SAMPLE
+echo # procedures: PR_SAMPLE
+echo # functions: FN_SAMPLE
+echo # tables: TABLE_ONE,TABLE_TWO
+echo # views: VW_SAMPLE
+echo # types: TP_SAMPLE
+echo.
+echo # [TEST]
+echo # schema:APPUSER19
+echo # packages:
+echo # procedures:
+echo # functions:
+echo # tables:
+echo # views:
+echo # types:
+echo.
+echo # [PROD]
+echo # schema:APPUSER19
+echo # packages:
+echo # procedures:
+echo # functions:
+echo # tables:
+echo # views:
+echo # types:
+) > "%TASK_TEMPLATE_PATH%"
+
+if errorlevel 1 (
+    echo Klaida: nepavyko sukurti task sablono "%TASK_TEMPLATE_PATH%".
+    exit /b 1
+)
+
 exit /b 0
 
 :ProcessTaskFile

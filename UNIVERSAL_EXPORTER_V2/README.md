@@ -34,7 +34,7 @@ Kas ivyksta su `--dry-run`:
 1. Patikrinami ivesties argumentai (TASK, ENV, optional SCHEMA).
 2. Nuskaitymas ir validacija:
 	- `config/exporter.yaml`
-	- `tasks/<TASK>/objects.txt`
+	- `EXPORTED_OBJECTS/<TASK>/objects.txt`
 3. Patikrinama, kad egzistuoja connection failas is config ir ji galima perskaityti.
 4. Suformuojamas pilnas vykdymo planas: kiekvienam zingsniui atspausdinamos SQL*Plus komandos (`EXECUTE | ...`).
 5. Sukuriamas run logas `logs/bat_export_<timestamp>.log`.
@@ -55,7 +55,7 @@ Svarbi praktine pastaba:
 - `oracle_exporter_task.bat` - pagrindinis entrypoint.
 - `scripts/run_export_task.bat` - pagrindinis task parseris ir vykdymo variklis (BAT), su tuo paciu CLI (`TASK ENV [SCHEMA] [--dry-run]`) ir named parametru palaikymu.
 - `config/exporter.yaml` - baziniai nustatymai (connection, extensions, ddl_source).
-- `tasks/<TASK>/objects.txt` - task objektu sarasai.
+- `EXPORTED_OBJECTS/<TASK>/objects.txt` - task objektu sarasai.
 - `scripts/*.sql` - SQL*Plus eksportavimo skriptai.
 - `logs/` - vykdymo logai.
 - `EXPORTED_OBJECTS/` - sugeneruoti objektai.
@@ -63,6 +63,7 @@ Svarbi praktine pastaba:
 Path/logikos pastaba:
 
 - Paleidimo `.bat` failai visus vidinius kelius skaiciuoja nuo savo direktorijos (`%~dp0`), todel eksporteri galima paleisti is bet kurios vietos (nebutina pirma `cd` i projekto kataloga).
+- Jei nurodytas task aplankas dar neegzistuoja, skriptas paklaus ar ji sukurti ir automatiskai sugeneruos uzkomentuota `objects.txt` sablona.
 
 ## Pastabos
 
