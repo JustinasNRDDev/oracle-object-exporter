@@ -84,3 +84,146 @@ Pilnas development profilis reikalingas tada, kai norite ne tik eksportuoti, bet
 Pastaba:
 - Paprastam DB objektu eksportavimui pilno development profilio nereikia.
 - Minimalios eksporto teises ir preflight capability patikra aprasytos `UNIVERSAL_EXPORTER_V2/README.md`.
+
+## Nuo nulio: Oracle ir aplinkos paruosimas (naujokui)
+
+Sis skyrius skirtas naujam komandos nariui, kad nuo tuscio kompiuterio galetu paleisti, taisyti ir plesti projekta.
+
+### 1) Isankstines salygos
+
+1. Turite Oracle DB su PDB `ORCLPDB1`.
+2. Turite SQL*Plus (pvz. Oracle Instant Client su SQL*Plus).
+3. Turite administratoriaus prisijungima (SYS/SYSTEM), su kuriuo sukursite roles ir naudotojus.
+
+### 2) SQL*Plus pasiekiamumas per PATH (Windows)
+
+Rekomenduojama i `PATH` itraukti Instant Client kataloga per Windows Environment Variables GUI.
+
+Greitas patikrinimas naujame terminale:
+
+```bat
+sqlplus -v
+```
+
+Jei komanda nerandama, papildykite PATH ir is naujo paleiskite VS Code.
+
+### 3) Naudotoju ir roliu sukurimas Oracle DB
+
+Zemiau yra pilnas pavyzdys, kaip paruosiamas development naudotojas, testiniu objektu schemos ir eksporto profiliu naudotojai.
+
+```sql
+ALTER SESSION SET CONTAINER = ORCLPDB1;
+
+-- Pilnam projekto vystymui (development)
+CREATE USER admin_user IDENTIFIED BY "xxx";
+CREATE ROLE developer_admin_role;
+
+GRANT CREATE SESSION TO developer_admin_role;
+GRANT SELECT ANY DICTIONARY TO developer_admin_role;
+GRANT CREATE ANY TABLE TO developer_admin_role;
+GRANT CREATE ANY INDEX TO developer_admin_role;
+GRANT CREATE ANY SEQUENCE TO developer_admin_role;
+GRANT CREATE ANY VIEW TO developer_admin_role;
+GRANT DROP ANY VIEW TO developer_admin_role;
+GRANT CREATE ANY TYPE TO developer_admin_role;
+GRANT ALTER ANY TYPE TO developer_admin_role;
+GRANT DROP ANY TYPE TO developer_admin_role;
+GRANT CREATE ANY PROCEDURE TO developer_admin_role;
+GRANT ALTER ANY PROCEDURE TO developer_admin_role;
+GRANT DROP ANY PROCEDURE TO developer_admin_role;
+GRANT DEBUG ANY PROCEDURE TO developer_admin_role;
+GRANT SELECT_CATALOG_ROLE TO developer_admin_role;
+
+GRANT developer_admin_role TO admin_user;
+
+-- Objektu savininku schemos testavimui
+CREATE USER appuser19 IDENTIFIED BY "xxx";
+GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE, CREATE PROCEDURE TO appuser19;
+ALTER USER appuser19 QUOTA UNLIMITED ON USERS;
+
+CREATE USER appuser19_2 IDENTIFIED BY "xxx";
+GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE, CREATE PROCEDURE TO appuser19_2;
+ALTER USER appuser19_2 QUOTA UNLIMITED ON USERS;
+
+-- Eksporto profilis: tik procedure capability
+CREATE USER admin_user_prc IDENTIFIED BY "xxx";
+CREATE ROLE dev_admin_role_prc;
+GRANT dev_admin_role_prc TO admin_user_prc;
+GRANT CREATE SESSION TO dev_admin_role_prc;
+GRANT DEBUG ANY PROCEDURE TO dev_admin_role_prc;
+
+-- Eksporto profilis: table/view/type capability
+CREATE USER admin_user_tbl IDENTIFIED BY "xxx";
+CREATE ROLE dev_admin_role_tbl;
+GRANT dev_admin_role_tbl TO admin_user_tbl;
+GRANT CREATE SESSION TO dev_admin_role_tbl;
+GRANT SELECT_CATALOG_ROLE TO dev_admin_role_tbl;
+GRANT SELECT ANY DICTIONARY TO dev_admin_role_tbl;
+
+-- Eksporto profilis: procedure + table/view/type capability
+CREATE USER admin_user_prc_tbl IDENTIFIED BY "xxx";
+CREATE ROLE dev_admin_role_prc_tbl;
+GRANT dev_admin_role_prc_tbl TO admin_user_prc_tbl;
+GRANT CREATE SESSION TO dev_admin_role_prc_tbl;
+GRANT SELECT_CATALOG_ROLE TO dev_admin_role_prc_tbl;
+GRANT SELECT ANY DICTIONARY TO dev_admin_role_prc_tbl;
+GRANT DEBUG ANY PROCEDURE TO dev_admin_role_prc_tbl;
+```
+
+### 4) Connection failai ir globalus aplinkos kintamieji
+
+Projektas skaito connection failus per `%ORACLE19_CONN%` ir papildomus capability testu kelius.
+
+Rekomenduojama lokali struktura (pavyzdys):
+
+```text
+C:\oracle\conn\full\connDEV.conf
+C:\oracle\conn\full\connTEST.conf
+C:\oracle\conn\full\connPROD.conf
+
+C:\oracle\conn\prc\connDEB.conf
+C:\oracle\conn\tbl\connDEB.conf
+C:\oracle\conn\prc_tbl\connDEB.conf
+```
+
+`conn*.conf` failuose viena eilute, pvz.:
+
+```text
+admin_user/xxx@localhost:1521/ORCLPDB1
+```
+
+arba capability profiliams:
+
+```text
+admin_user_prc/xxx@localhost:1521/ORCLPDB1
+admin_user_tbl/xxx@localhost:1521/ORCLPDB1
+admin_user_prc_tbl/xxx@localhost:1521/ORCLPDB1
+```
+
+Globaliu kintamuju pavyzdys (`setx`, paleisti viena karta):
+
+```bat
+setx ORACLE19_CONN "C:\oracle\conn\full"
+setx ORACLE19_CONN_PRC "C:\oracle\conn\prc"
+setx ORACLE19_CONN_TBL "C:\oracle\conn\tbl"
+setx ORACLE19_CONN_PRC_TBL "C:\oracle\conn\prc_tbl"
+```
+
+Po `setx` butina perkrauti VS Code, kad nauji kintamieji butu matomi procesuose.
+
+### 5) Greitas patikrinimas po setup
+
+```bat
+echo %ORACLE19_CONN%
+echo %ORACLE19_CONN_PRC%
+echo %ORACLE19_CONN_TBL%
+echo %ORACLE19_CONN_PRC_TBL%
+sqlplus -v
+```
+
+Tada galite pradeti nuo:
+
+1. `UNIVERSAL_EXPORTER_IMPROVED` source vystymui ir testams.
+2. `UNIVERSAL_EXPORTER_V2` preflight/dry-run capability tikrinimui.
+
+Saugumo pastaba: tikru slaptazodziu nelaikykite repozitorijoje ir nesiuskite i Git.
