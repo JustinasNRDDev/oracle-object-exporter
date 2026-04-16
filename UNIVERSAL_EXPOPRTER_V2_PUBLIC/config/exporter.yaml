@@ -1,0 +1,87 @@
+version: 1
+
+defaults:
+  sqlplus_executable: sqlplus
+  nls_lang: LITHUANIAN_LITHUANIA.UTF8
+  output_root: EXPORTED_OBJECTS
+  task_root: tasks
+  task_objects_file_name: objects.txt
+  scripts_dir: scripts
+  logs_dir: logs
+  ddl_source: all
+  post_export_scan_enabled: true
+  export_extensions:
+    packages: pck
+    procedures: prc
+    functions: fnc
+    tables: sql
+    views: sql
+    types: typ
+  strict_sqlplus_errors: true
+
+environments:
+  DEV:
+    connection_file: "%ORACLE19_CONN%\\connDEV.conf"
+    ddl_source: dba
+    nls_lang: Lithuanian_lithuania.utf8
+    export_extensions:
+      procedures: sql
+      functions: sql
+
+  TEST:
+    connection_file: "%ORACLE19_CONN%\\connTEST.conf"
+    ddl_source: dba
+    nls_lang: Lithuanian_lithuania.utf8
+    export_extensions:
+      procedures: sql
+      functions: sql
+
+  PROD:
+    connection_file: "%ORACLE19_CONN%\\connPROD.conf"
+    ddl_source: dba
+    nls_lang: Lithuanian_lithuania.utf8
+    export_extensions:
+      procedures: sql
+      functions: sql
+
+  LOCAL19:
+    connection_file: "%ORACLE19_CONN%\\connDEV.conf"
+    ddl_source: dba
+    nls_lang: Lithuanian_lithuania.utf8
+    schema_steps:
+      APPUSER19:
+        - packages
+        - procedures
+        - functions
+        - types
+        - table_ddl
+        - view_ddl
+      APPUSER19_2:
+        - packages
+        - procedures
+        - functions
+        - types
+        - view_ddl
+
+catalog:
+  APPUSER19:
+    packages: testing/local_oracle19/data/APPUSER19_packages.txt
+    procedures: testing/local_oracle19/data/APPUSER19_procedures.txt
+    functions: testing/local_oracle19/data/APPUSER19_functions.txt
+    types: testing/local_oracle19/data/APPUSER19_types.txt
+    table_ddl: testing/local_oracle19/data/table_list_APPUSER19.txt
+    view_ddl: testing/local_oracle19/data/view_list_APPUSER19.txt
+
+  APPUSER19_2:
+    packages: testing/local_oracle19/data/APPUSER19_2_packages.txt
+    procedures: testing/local_oracle19/data/APPUSER19_2_procedures.txt
+    functions: testing/local_oracle19/data/APPUSER19_2_functions.txt
+    types: testing/local_oracle19/data/APPUSER19_2_types.txt
+    table_ddl: testing/local_oracle19/data/table_list_APPUSER19_2.txt
+    view_ddl: testing/local_oracle19/data/view_list_APPUSER19_2.txt
+
+output:
+  routines_subdirectory: ""
+  tables_subdirectory: TABLES
+  views_subdirectory: VIEWS
+  types_subdirectory: TYPES

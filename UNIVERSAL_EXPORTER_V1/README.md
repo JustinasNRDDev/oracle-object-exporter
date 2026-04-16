@@ -72,6 +72,52 @@ Pastabos:
 - scripts/ - SQL*Plus eksportavimo skriptai.
 - logs/ - run logai ir sugeneruoti tarpiniai SQL.
 
+## Public aplankas dalinimuisi (UNIVERSAL_EXPORTER_V1_PUBLIC)
+
+`UNIVERSAL_EXPORTER_V1_PUBLIC` yra dalinimuisi paruostas runtime aplankas,
+kuriame paliekami tik failai, reikalingi normaliam paleidimui.
+
+Paskirtis:
+- perduoti eksporteri kolegoms arba kitai komandai be testiniu artefaktu,
+- tureti svaru paketa darbiniam naudojimui,
+- mazinti triuksma (test failai, git failai, seni logai).
+
+Kas turi buti `UNIVERSAL_EXPORTER_V1_PUBLIC` viduje:
+1. `oracle_exporter.exe`
+2. `config/exporter.yaml`
+3. `scripts/*.sql`
+4. `tasks/TASK_TEMPLATE/objects.txt` (arba bent vienas veikiantis task sablonas)
+5. tuscias `logs/` katalogas
+6. tuscias `EXPORTED_OBJECTS/` katalogas
+
+Ko neturetu buti public aplanke:
+1. `testing/`
+2. `.git/`, `.gitignore` ir kiti git failai
+3. seni `logs/*.log`
+4. jau sugeneruoti eksporto rezultatai is `EXPORTED_OBJECTS/`
+5. laikini ar lokalus dev failai
+
+Rekomenduojama minimali struktura:
+
+UNIVERSAL_EXPORTER_V1_PUBLIC/
+	oracle_exporter.exe
+	README.md
+	config/
+		exporter.yaml
+	scripts/
+		...sql failai...
+	tasks/
+		TASK_TEMPLATE/
+			objects.txt
+	logs/
+	EXPORTED_OBJECTS/
+
+Paleidimas is `UNIVERSAL_EXPORTER_V1_PUBLIC` nesikeicia:
+
+oracle_exporter.exe TASK_123 DEV
+oracle_exporter.exe TASK_123 DEV --dry-run
+oracle_exporter.exe TASK_123 DEV --preflight
+
 ## YAML paskirtis
 
 YAML saugo bendra logika ir nustatymus:
