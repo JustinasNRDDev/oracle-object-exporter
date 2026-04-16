@@ -60,3 +60,27 @@ Komandu pavyzdziai:
 - `UNIVERSAL_EXPORTER_IMPROVED`: `python run_export.py TASK_123 DEV --dry-run`
 - `UNIVERSAL_EXPORTER_V1`: `oracle_exporter.exe TASK_123 DEV --dry-run`
 - `UNIVERSAL_EXPORTER_V2`: `oracle_exporter_task.bat TASK_123 DEV --dry-run`
+
+## Oracle teises pilnam projekto vystymui
+
+Pilnas development profilis reikalingas tada, kai norite ne tik eksportuoti, bet ir aktyviai vystyti/keisti objektus (kurti, alter'inti, drop'inti, derinti):
+
+- `CREATE SESSION`
+- `SELECT_CATALOG_ROLE`
+- `SELECT ANY DICTIONARY`
+- `CREATE ANY TABLE`
+- `CREATE ANY INDEX`
+- `CREATE ANY SEQUENCE`
+- `CREATE ANY VIEW`
+- `DROP ANY VIEW`
+- `CREATE ANY TYPE`
+- `ALTER ANY TYPE`
+- `DROP ANY TYPE`
+- `CREATE ANY PROCEDURE`
+- `ALTER ANY PROCEDURE`
+- `DROP ANY PROCEDURE`
+- `DEBUG ANY PROCEDURE`
+
+Pastaba:
+- Paprastam DB objektu eksportavimui pilno development profilio nereikia.
+- Minimalios eksporto teises ir preflight capability patikra aprasytos `UNIVERSAL_EXPORTER_V2/README.md`.

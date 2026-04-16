@@ -1,6 +1,8 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
+call :ImportMissingRegistryEnvironment
+
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 for %%I in ("%SCRIPT_DIR%\..") do set "PROJECT_ROOT=%%~fI"
@@ -83,7 +85,7 @@ if defined ENV_CONNECTION_FILE (
     )
 )
 
-call :ExpandEnvPath "%CONNECTION_FILE%" RESOLVED_CONNECTION_FILE
+call :ExpandEnvPath "!CONNECTION_FILE!" RESOLVED_CONNECTION_FILE
 if not exist "%RESOLVED_CONNECTION_FILE%" (
     echo Klaida: nerastas connection failas "%RESOLVED_CONNECTION_FILE%".
     exit /b 1
@@ -147,6 +149,24 @@ if not "%PROCESS_RC%"=="0" exit /b %PROCESS_RC%
 
 call :WriteLog "RUN END | total=%SUMMARY_TOTAL% executed=%SUMMARY_EXECUTED% skipped=%SUMMARY_SKIPPED%"
 call :WriteLog "LOG FILE | %LOG_FILE%"
+exit /b 0
+
+:ImportMissingRegistryEnvironment
+for /f "skip=2 tokens=1,2,*" %%A in ('reg query "HKCU\Environment" 2^>nul') do (
+    if not "%%A"=="" (
+        if /I not "%%A"=="Path" (
+            if not defined %%A set "%%A=%%C"
+        )
+    )
+)
+
+for /f "skip=2 tokens=1,2,*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" 2^>nul') do (
+    if not "%%A"=="" (
+        if /I not "%%A"=="Path" (
+            if not defined %%A set "%%A=%%C"
+        )
+    )
+)
 exit /b 0
 
 :ParsePositionalArgs
@@ -322,6 +342,25 @@ set "ENV_EXT_VIEWS="
 set "TARGET_ENV_FOUND=0"
 set "TASK_NLS_LANG="
 set "PREFLIGHT_VALIDATE_ONLY=0"
+
+set "PREFLIGHT_REQUESTED_PACKAGES=0"
+set "PREFLIGHT_REQUESTED_PROCEDURES=0"
+set "PREFLIGHT_REQUESTED_FUNCTIONS=0"
+set "PREFLIGHT_REQUESTED_TYPES=0"
+set "PREFLIGHT_REQUESTED_TABLES=0"
+set "PREFLIGHT_REQUESTED_VIEWS=0"
+
+set "PREFLIGHT_PRIV_CREATE_SESSION=0"
+set "PREFLIGHT_PRIV_SELECT_ANY_DICTIONARY=0"
+set "PREFLIGHT_PRIV_DEBUG_ANY_PROCEDURE=0"
+set "PREFLIGHT_ROLE_SELECT_CATALOG_ROLE=0"
+
+set "PREFLIGHT_CAN_PACKAGES=0"
+set "PREFLIGHT_CAN_PROCEDURES=0"
+set "PREFLIGHT_CAN_FUNCTIONS=0"
+set "PREFLIGHT_CAN_TYPES=0"
+set "PREFLIGHT_CAN_TABLES=0"
+set "PREFLIGHT_CAN_VIEWS=0"
 exit /b 0
 
 :LoadConfig
@@ -443,7 +482,7 @@ set "TASK_FILE_PATH="
 set "TASK_LABEL_VALUE="
 set "TASK_DIR_PATH="
 
-call :ExpandEnvPath "%TASK_INPUT%" TASK_INPUT_EXPANDED
+call :ExpandEnvPath "!TASK_INPUT!" TASK_INPUT_EXPANDED
 if not defined TASK_INPUT_EXPANDED set "TASK_INPUT_EXPANDED=%TASK_INPUT%"
 call :StripQuotes "%TASK_INPUT_EXPANDED%" TASK_INPUT_EXPANDED
 call :Trim "%TASK_INPUT_EXPANDED%" TASK_INPUT_EXPANDED
@@ -760,6 +799,7 @@ if "%STEP_OBJECT_COUNT%"=="0" (
 )
 
 if /I "%PREFLIGHT_VALIDATE_ONLY%"=="1" (
+    call :AddPreflightStep "%STEP_NAME%"
     call :WriteLog "CHECK | schema=%STEP_SCHEMA% step=%STEP_NAME% objects=%STEP_OBJECT_COUNT%"
     exit /b 0
 )
@@ -861,6 +901,13 @@ set "PREFLIGHT_VALIDATE_ONLY=1"
 set "DRY_RUN=1"
 set "OUTPUT_ROOT=%TASK_DIR%\%ENV_NAME%\%RUN_TIMESTAMP%_PREFLIGHT"
 
+set "PREFLIGHT_REQUESTED_PACKAGES=0"
+set "PREFLIGHT_REQUESTED_PROCEDURES=0"
+set "PREFLIGHT_REQUESTED_FUNCTIONS=0"
+set "PREFLIGHT_REQUESTED_TYPES=0"
+set "PREFLIGHT_REQUESTED_TABLES=0"
+set "PREFLIGHT_REQUESTED_VIEWS=0"
+
 call :WriteLog "PREFLIGHT | validating task file structure"
 call :ProcessTaskFile "%TASK_FILE%" "%ENV_NAME%" "%SCHEMA_NAME%"
 set "PREFLIGHT_TASK_RC=%errorlevel%"
@@ -901,18 +948,22 @@ if errorlevel 1 (
     exit /b 1
 )
 
-findstr /b /c:"PREFLIGHT_MISSING_PRIV:" "%PREFLIGHT_TMP_OUT%" >nul 2>&1
-if not errorlevel 1 (
-    call :ReportMissingPrivileges "%PREFLIGHT_TMP_OUT%"
+findstr /b /c:"PREFLIGHT_CAPABILITY:PROCEDURES:" "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+if errorlevel 1 (
+    echo Klaida: preflight SQL negrazino capability informacijos.
+    call :WriteLog "ERROR | preflight SQL negrazino capability informacijos"
     if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
     exit /b 1
 )
 
-findstr /b /c:"PREFLIGHT_MISSING_ROLE:" "%PREFLIGHT_TMP_OUT%" >nul 2>&1
-if not errorlevel 1 (
-    call :ReportMissingRoles "%PREFLIGHT_TMP_OUT%"
+call :ParsePreflightCapabilities "%PREFLIGHT_TMP_OUT%"
+call :PrintPreflightSummary
+call :ValidatePreflightCapabilities
+set "PREFLIGHT_CAP_RC=%errorlevel%"
+
+if not "%PREFLIGHT_CAP_RC%"=="0" (
     if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
-    exit /b 1
+    exit /b %PREFLIGHT_CAP_RC%
 )
 
 if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
@@ -920,27 +971,123 @@ if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
 call :WriteLog "PREFLIGHT | all checks passed"
 exit /b 0
 
-:ReportMissingPrivileges
-set "REPORT_FILE=%~1"
-echo Klaida: truksta Oracle privilegiju:
-for /f "usebackq tokens=1* delims=:" %%A in (`findstr /b /c:"PREFLIGHT_MISSING_PRIV:" "%REPORT_FILE%"`) do (
-    echo   %%B
-)
-call :WriteLog "ERROR | truksta Oracle privilegiju"
+:AddPreflightStep
+set "PRE_STEP=%~1"
+if /I "%PRE_STEP%"=="packages" set "PREFLIGHT_REQUESTED_PACKAGES=1"
+if /I "%PRE_STEP%"=="procedures" set "PREFLIGHT_REQUESTED_PROCEDURES=1"
+if /I "%PRE_STEP%"=="functions" set "PREFLIGHT_REQUESTED_FUNCTIONS=1"
+if /I "%PRE_STEP%"=="types" set "PREFLIGHT_REQUESTED_TYPES=1"
+if /I "%PRE_STEP%"=="tables" set "PREFLIGHT_REQUESTED_TABLES=1"
+if /I "%PRE_STEP%"=="views" set "PREFLIGHT_REQUESTED_VIEWS=1"
 exit /b 0
 
-:ReportMissingRoles
+:ParsePreflightCapabilities
 set "REPORT_FILE=%~1"
-echo Klaida: truksta Oracle roliu:
-for /f "usebackq tokens=1* delims=:" %%A in (`findstr /b /c:"PREFLIGHT_MISSING_ROLE:" "%REPORT_FILE%"`) do (
-    echo   %%B
+set "PREFLIGHT_PRIV_CREATE_SESSION=0"
+set "PREFLIGHT_PRIV_SELECT_ANY_DICTIONARY=0"
+set "PREFLIGHT_PRIV_DEBUG_ANY_PROCEDURE=0"
+set "PREFLIGHT_ROLE_SELECT_CATALOG_ROLE=0"
+
+set "PREFLIGHT_CAN_PACKAGES=0"
+set "PREFLIGHT_CAN_PROCEDURES=0"
+set "PREFLIGHT_CAN_FUNCTIONS=0"
+set "PREFLIGHT_CAN_TYPES=0"
+set "PREFLIGHT_CAN_TABLES=0"
+set "PREFLIGHT_CAN_VIEWS=0"
+
+for /f "usebackq tokens=1,2,3 delims=:" %%A in (`findstr /b /c:"PREFLIGHT_PRIV:" "%REPORT_FILE%"`) do (
+    if /I "%%B"=="CREATE_SESSION" set "PREFLIGHT_PRIV_CREATE_SESSION=%%C"
+    if /I "%%B"=="SELECT_ANY_DICTIONARY" set "PREFLIGHT_PRIV_SELECT_ANY_DICTIONARY=%%C"
+    if /I "%%B"=="DEBUG_ANY_PROCEDURE" set "PREFLIGHT_PRIV_DEBUG_ANY_PROCEDURE=%%C"
 )
-call :WriteLog "ERROR | truksta Oracle roliu"
+
+for /f "usebackq tokens=1,2,3 delims=:" %%A in (`findstr /b /c:"PREFLIGHT_ROLE:" "%REPORT_FILE%"`) do (
+    if /I "%%B"=="SELECT_CATALOG_ROLE" set "PREFLIGHT_ROLE_SELECT_CATALOG_ROLE=%%C"
+)
+
+for /f "usebackq tokens=1,2,3 delims=:" %%A in (`findstr /b /c:"PREFLIGHT_CAPABILITY:" "%REPORT_FILE%"`) do (
+    if /I "%%B"=="PACKAGES" set "PREFLIGHT_CAN_PACKAGES=%%C"
+    if /I "%%B"=="PROCEDURES" set "PREFLIGHT_CAN_PROCEDURES=%%C"
+    if /I "%%B"=="FUNCTIONS" set "PREFLIGHT_CAN_FUNCTIONS=%%C"
+    if /I "%%B"=="TYPES" set "PREFLIGHT_CAN_TYPES=%%C"
+    if /I "%%B"=="TABLES" set "PREFLIGHT_CAN_TABLES=%%C"
+    if /I "%%B"=="VIEWS" set "PREFLIGHT_CAN_VIEWS=%%C"
+)
+
+exit /b 0
+
+:PrintPreflightSummary
+call :BoolToYesNo "%PREFLIGHT_PRIV_CREATE_SESSION%" TXT_CREATE_SESSION
+call :BoolToYesNo "%PREFLIGHT_PRIV_SELECT_ANY_DICTIONARY%" TXT_SELECT_ANY_DICTIONARY
+call :BoolToYesNo "%PREFLIGHT_PRIV_DEBUG_ANY_PROCEDURE%" TXT_DEBUG_ANY_PROCEDURE
+call :BoolToYesNo "%PREFLIGHT_ROLE_SELECT_CATALOG_ROLE%" TXT_SELECT_CATALOG_ROLE
+
+call :BoolToYesNo "%PREFLIGHT_CAN_PACKAGES%" TXT_CAN_PACKAGES
+call :BoolToYesNo "%PREFLIGHT_CAN_PROCEDURES%" TXT_CAN_PROCEDURES
+call :BoolToYesNo "%PREFLIGHT_CAN_FUNCTIONS%" TXT_CAN_FUNCTIONS
+call :BoolToYesNo "%PREFLIGHT_CAN_TYPES%" TXT_CAN_TYPES
+call :BoolToYesNo "%PREFLIGHT_CAN_TABLES%" TXT_CAN_TABLES
+call :BoolToYesNo "%PREFLIGHT_CAN_VIEWS%" TXT_CAN_VIEWS
+
+echo.
+echo Oracle teisiu suvestine:
+echo   CREATE SESSION: %TXT_CREATE_SESSION%
+echo   SELECT ANY DICTIONARY: %TXT_SELECT_ANY_DICTIONARY%
+echo   DEBUG ANY PROCEDURE: %TXT_DEBUG_ANY_PROCEDURE%
+echo   SELECT_CATALOG_ROLE: %TXT_SELECT_CATALOG_ROLE%
+echo.
+echo Oracle eksporto galimybes:
+echo   packages: %TXT_CAN_PACKAGES%
+echo   procedures: %TXT_CAN_PROCEDURES%
+echo   functions: %TXT_CAN_FUNCTIONS%
+echo   types: %TXT_CAN_TYPES%
+echo   tables: %TXT_CAN_TABLES%
+echo   views: %TXT_CAN_VIEWS%
+
+call :WriteLog "PREFLIGHT RIGHTS | CREATE_SESSION=%TXT_CREATE_SESSION% SELECT_ANY_DICTIONARY=%TXT_SELECT_ANY_DICTIONARY% DEBUG_ANY_PROCEDURE=%TXT_DEBUG_ANY_PROCEDURE% SELECT_CATALOG_ROLE=%TXT_SELECT_CATALOG_ROLE%"
+call :WriteLog "PREFLIGHT CAPABILITIES | packages=%TXT_CAN_PACKAGES% procedures=%TXT_CAN_PROCEDURES% functions=%TXT_CAN_FUNCTIONS% types=%TXT_CAN_TYPES% tables=%TXT_CAN_TABLES% views=%TXT_CAN_VIEWS%"
+exit /b 0
+
+:ValidatePreflightCapabilities
+set "PREFLIGHT_MISSING_STEPS="
+
+if "%PREFLIGHT_REQUESTED_PACKAGES%"=="1" if not "%PREFLIGHT_CAN_PACKAGES%"=="1" call :AddMissingPreflightStep "packages"
+if "%PREFLIGHT_REQUESTED_PROCEDURES%"=="1" if not "%PREFLIGHT_CAN_PROCEDURES%"=="1" call :AddMissingPreflightStep "procedures"
+if "%PREFLIGHT_REQUESTED_FUNCTIONS%"=="1" if not "%PREFLIGHT_CAN_FUNCTIONS%"=="1" call :AddMissingPreflightStep "functions"
+if "%PREFLIGHT_REQUESTED_TYPES%"=="1" if not "%PREFLIGHT_CAN_TYPES%"=="1" call :AddMissingPreflightStep "types"
+if "%PREFLIGHT_REQUESTED_TABLES%"=="1" if not "%PREFLIGHT_CAN_TABLES%"=="1" call :AddMissingPreflightStep "tables"
+if "%PREFLIGHT_REQUESTED_VIEWS%"=="1" if not "%PREFLIGHT_CAN_VIEWS%"=="1" call :AddMissingPreflightStep "views"
+
+if defined PREFLIGHT_MISSING_STEPS (
+    echo Klaida: pagal naudotojo teises siame task negalimas eksportas siu tipams: %PREFLIGHT_MISSING_STEPS%
+    call :WriteLog "ERROR | preflight truksta teisiu task tipams: %PREFLIGHT_MISSING_STEPS%"
+    exit /b 1
+)
+
+echo Preflight: pagal esamas teises galima eksportuoti visus task'e nurodytus objektu tipus.
+call :WriteLog "PREFLIGHT | task objektu tipams teisiu pakanka"
+exit /b 0
+
+:AddMissingPreflightStep
+if defined PREFLIGHT_MISSING_STEPS (
+    set "PREFLIGHT_MISSING_STEPS=%PREFLIGHT_MISSING_STEPS%, %~1"
+) else (
+    set "PREFLIGHT_MISSING_STEPS=%~1"
+)
+exit /b 0
+
+:BoolToYesNo
+set "BOOL_INPUT=%~1"
+if "%BOOL_INPUT%"=="1" (
+    set "%~2=YES"
+) else (
+    set "%~2=NO"
+)
 exit /b 0
 
 :CheckSqlPlusExecutable
 set "SQLPLUS_CHECK=%SQLPLUS_EXE%"
-call :ExpandEnvPath "%SQLPLUS_CHECK%" SQLPLUS_CHECK
+call :ExpandEnvPath "!SQLPLUS_CHECK!" SQLPLUS_CHECK
 call :StripQuotes "%SQLPLUS_CHECK%" SQLPLUS_CHECK
 call :Trim "%SQLPLUS_CHECK%" SQLPLUS_CHECK
 if not defined SQLPLUS_CHECK set "SQLPLUS_CHECK=sqlplus"
@@ -1010,8 +1157,6 @@ set "EXPAND_VALUE=%~1"
 if not defined EXPAND_VALUE (
     endlocal & set "%~2=" & exit /b 0
 )
-
-call set "EXPAND_VALUE=%%EXPAND_VALUE%%"
 set /a EXPAND_GUARD=0
 
 :ExpandLoop
@@ -1021,11 +1166,14 @@ if !EXPAND_GUARD! gtr 20 goto ExpandDone
 set "EXPAND_PRE="
 set "EXPAND_VAR="
 set "EXPAND_POST="
-for /f "tokens=1,2* delims=%%" %%A in ("!EXPAND_VALUE!") do (
+set "EXPAND_PARSE=#!EXPAND_VALUE!"
+for /f "tokens=1,2* delims=%%" %%A in ("!EXPAND_PARSE!") do (
     set "EXPAND_PRE=%%A"
     set "EXPAND_VAR=%%B"
     set "EXPAND_POST=%%C"
 )
+
+if defined EXPAND_PRE set "EXPAND_PRE=!EXPAND_PRE:~1!"
 
 if not defined EXPAND_VAR goto ExpandDone
 

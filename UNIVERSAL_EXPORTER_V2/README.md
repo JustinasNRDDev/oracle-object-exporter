@@ -63,33 +63,33 @@ Kas ivyksta su `--preflight`:
 2. Patikrinama, ar pasiekiamas `sqlplus` (`PATH` arba `sqlplus_executable`).
 3. Patikrinama, ar yra visi privalomi `scripts/*.sql` failai, reikalingi eksportui.
 4. Patikrinamas prisijungimas prie Oracle DB.
-5. Oracle sesijoje patikrinamos reikalingos privilegijos ir role.
+5. Oracle sesijoje surenkama teisiu suvestine ir apskaiciuojamos eksporto galimybes pagal objektu tipus.
+6. Preflight palygina task'e nurodytus objektu tipus su realiomis galimybemis ir aiskiai pranesa, kas leidziama / kas neleidziama.
 
 Ko `--preflight` nedaro:
 
 1. Neeksportuoja objektu i failus.
 2. Nevykdo realiu objektu eksporto SQL skriptu.
 
-Tikrinuamos Oracle privilegijos (per `SESSION_PRIVS`):
+Minimalios Oracle teises objektu eksportui:
 
+1. Bazine teise prisijungimui:
 - `CREATE SESSION`
-- `SELECT ANY DICTIONARY`
-- `CREATE ANY TABLE`
-- `CREATE ANY INDEX`
-- `CREATE ANY SEQUENCE`
-- `CREATE ANY VIEW`
-- `DROP ANY VIEW`
-- `CREATE ANY TYPE`
-- `ALTER ANY TYPE`
-- `DROP ANY TYPE`
-- `CREATE ANY PROCEDURE`
-- `ALTER ANY PROCEDURE`
-- `DROP ANY PROCEDURE`
+
+2. Jei reikia proceduru source eksporto:
 - `DEBUG ANY PROCEDURE`
 
-Tikrinuama Oracle role (per `SESSION_ROLES`):
+3. Jei reikia `tables`, `views`, `types` (ir daugeliu atveju platesnio source skaitymo):
+- `SELECT_CATALOG_ROLE` arba
+- `SELECT ANY DICTIONARY`
 
-- `SELECT_CATALOG_ROLE`
+Kitaip tariant, pilno development teisiu rinkinio paprastam eksportui nereikia.
+
+Ka tiksliai pamatysite `--preflight` rezultate:
+
+- Teisiu suvestine (`CREATE SESSION`, `SELECT ANY DICTIONARY`, `DEBUG ANY PROCEDURE`, `SELECT_CATALOG_ROLE`).
+- Galimybiu matrica pagal tipus: `packages`, `procedures`, `functions`, `types`, `tables`, `views`.
+- Jei task'e yra tipu, kuriems naudotojas teisiu neturi, preflight baigsis klaida ir parodys trukstamus tipus.
 
 ## Struktura
 

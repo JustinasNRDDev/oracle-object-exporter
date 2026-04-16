@@ -9,6 +9,7 @@ Tikslas: uzfiksuoti funkcini kontrakta, kad BAT, Python, EXE ar C# realizacijos 
 - Dry-run planavimo logika
 - DDL saltinio ir extension taisykles
 - Path savarankiskumas (paleidimas is bet kurios vietos)
+- Preflight capability matrica pagal skirtingus Oracle teisiu profilius
 
 ## Kontraktiniai scenarijai
 
@@ -107,6 +108,15 @@ Tikslas: uzfiksuoti funkcini kontrakta, kad BAT, Python, EXE ar C# realizacijos 
 - When: dry-run paleidziamas be --dry-run
 - Then: sugeneruojami realus failai su nurodytais extension
 - Automatizuota: ne (rankinis scenarijus)
+
+17. CT-017 Preflight profilis PRC+TBL (procedures + tables/views/types)
+- Given: naudotojas turi teises `CREATE SESSION`, `SELECT_CATALOG_ROLE`, `SELECT ANY DICTIONARY`, `DEBUG ANY PROCEDURE`
+- Given: preflight config naudoja `connection_file: "%ORACLE19_CONN_PRC_TBL%\\connDEB.conf"`
+- Given: task `TASK_1_MIXED` turi objektu tipus `procedures`, `tables`, `views`, `types`
+- When: paleidziama `oracle_exporter_task.bat TASK_1_MIXED DEB --preflight -ConfigPath <path>\\exporter_prc_tbl.yaml`
+- Then: `PREFLIGHT CAPABILITIES` turi rodyti bent `procedures=YES`, `tables=YES`, `views=YES`, `types=YES`
+- Then: preflight neturi grazinti klaidos `preflight truksta teisiu task tipams`
+- Automatizuota: ne (rankinis scenarijus, priklauso nuo lokalios Oracle teisiu konfiguracijos)
 
 ## Vykdymas
 
