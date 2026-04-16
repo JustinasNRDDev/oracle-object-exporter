@@ -1,7 +1,7 @@
 SET TERM OFF
 -- dollar negalima naudoti failo pavadinime https://forums.oracle.com/ords/apexds/post/how-to-run-a-script-with-a-dollar-sign-in-the-file-name-fro-6856
 column fname new_val fname
-select DECODE((select count(*) from dba_views WHERE owner = UPPER('&2') AND view_name = UPPER('&3')), 1, ('&1' || '\\'), 0, ('&1' || '\\' || 'NOT_EXISTS_')) || REPLACE('&3', '$', '_dollar') || '.' || lower(trim('&4')) fname from dual;
+select DECODE((select count(*) from dba_views WHERE owner = UPPER('&2') AND view_name = UPPER('&3')), 1, ('&1' || '\\'), 0, ('&1' || '\\' || 'NOT_EXISTS_')) || REPLACE('&3', '$', '_dollar') || '.' || trim('&4') fname from dual;
 spool &fname
 select dbms_metadata.get_ddl('VIEW', view_name, owner)
 from dba_views

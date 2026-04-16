@@ -9,9 +9,9 @@ SET DEFINE ON
 SET VERIFY OFF
 SET TERM ON
 
---select '&1' || '\\' || '&2' || '.' || lower(trim('&4')) fname from dual;
+--select '&1' || '\\' || '&2' || '.' || trim('&4') fname from dual;
 column fname new_val fname
-select '&1' || '\\' || '&2' || '.' || lower(trim('&4')) fname from dual;
+select '&1' || '\\' || '&2' || '.' || trim('&4') fname from dual;
 SET TERM OFF
 spool &fname REPLACE
 

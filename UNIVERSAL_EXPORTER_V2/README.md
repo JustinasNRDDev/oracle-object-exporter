@@ -69,3 +69,4 @@ Path/logikos pastaba:
 
 - `objects.txt` formatas: [ENV] blokai, `schema:`, ir objektu tipai (`packages`, `procedures`, `functions`, `tables`, `views`, `types`).
 - NLS koduote gali buti nurodyta task faile per `nls_lang:`.
+- `config/exporter.yaml` `export_extensions` reiksmes gali buti bet kokios (pvz. `pr`, `prc`, `fc`, `fnc`, `pkgx`, `sqlx` ir pan.) - jos neberibojamos iki fiksuoto saraso.
