@@ -16,7 +16,7 @@ Sis variantas skirtas darbo aplinkai, kur:
 
 Komanda:
 
-oracle_exporter_task.bat TASK ENV [SCHEMA] [--dry-run]
+oracle_exporter_task.bat TASK ENV [SCHEMA] [--dry-run] [--preflight] [-ConfigPath path]
 
 Pavyzdziai:
 
@@ -24,6 +24,9 @@ oracle_exporter_task.bat TASK_123 DEV
 oracle_exporter_task.bat TASK_123 DEV APPUSER19
 oracle_exporter_task.bat TASK_123 DEV --dry-run
 oracle_exporter_task.bat TASK_123 DEV APPUSER19 --dry-run
+oracle_exporter_task.bat TASK_123 DEV --preflight
+oracle_exporter_task.bat TASK_123 DEV APPUSER19 --preflight
+oracle_exporter_task.bat TASK_123 DEV --preflight -ConfigPath .\config\exporter.yaml
 
 ## Ka tiksliai duoda --dry-run
 
@@ -49,6 +52,44 @@ Svarbi praktine pastaba:
 
 - `--dry-run` gali sukurti tik run katalogo struktura po `EXPORTED_OBJECTS/...` ir log faila, bet ne objektu DDL/source turini.
 - Jei reikia tik patikrinti plana pries produkcini paleidima, visada pirma naudokite `--dry-run`.
+
+## Ka tiksliai duoda --preflight
+
+`--preflight` (arba alias `--check`) yra paruosties patikra pries paleidima.
+
+Kas ivyksta su `--preflight`:
+
+1. Patikrinami ivesties argumentai ir task failo struktura.
+2. Patikrinama, ar pasiekiamas `sqlplus` (`PATH` arba `sqlplus_executable`).
+3. Patikrinama, ar yra visi privalomi `scripts/*.sql` failai, reikalingi eksportui.
+4. Patikrinamas prisijungimas prie Oracle DB.
+5. Oracle sesijoje patikrinamos reikalingos privilegijos ir role.
+
+Ko `--preflight` nedaro:
+
+1. Neeksportuoja objektu i failus.
+2. Nevykdo realiu objektu eksporto SQL skriptu.
+
+Tikrinuamos Oracle privilegijos (per `SESSION_PRIVS`):
+
+- `CREATE SESSION`
+- `SELECT ANY DICTIONARY`
+- `CREATE ANY TABLE`
+- `CREATE ANY INDEX`
+- `CREATE ANY SEQUENCE`
+- `CREATE ANY VIEW`
+- `DROP ANY VIEW`
+- `CREATE ANY TYPE`
+- `ALTER ANY TYPE`
+- `DROP ANY TYPE`
+- `CREATE ANY PROCEDURE`
+- `ALTER ANY PROCEDURE`
+- `DROP ANY PROCEDURE`
+- `DEBUG ANY PROCEDURE`
+
+Tikrinuama Oracle role (per `SESSION_ROLES`):
+
+- `SELECT_CATALOG_ROLE`
 
 ## Struktura
 

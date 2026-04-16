@@ -15,6 +15,7 @@ set "ENV_NAME="
 set "SCHEMA_NAME="
 set "CONFIG_FILE=%DEFAULT_CONFIG%"
 set "DRY_RUN=0"
+set "PREFLIGHT_ONLY=0"
 
 if /I "%~1"=="-h" goto usage
 if /I "%~1"=="--help" goto usage
@@ -102,9 +103,6 @@ call :BuildTimestamp RUN_TIMESTAMP
 if not exist "%LOGS_DIR%" mkdir "%LOGS_DIR%" >nul 2>&1
 set "LOG_FILE=%LOGS_DIR%\bat_export_%RUN_TIMESTAMP%.log"
 
-set "OUTPUT_ROOT=%TASK_DIR%\%ENV_NAME%\%RUN_TIMESTAMP%"
-if not exist "%OUTPUT_ROOT%" mkdir "%OUTPUT_ROOT%" >nul 2>&1
-
 set /a SUMMARY_TOTAL=0
 set /a SUMMARY_EXECUTED=0
 set /a SUMMARY_SKIPPED=0
@@ -114,6 +112,25 @@ call :WriteLog "CONFIG | %CONFIG_FILE%"
 call :WriteLog "TASK FILE | %TASK_FILE%"
 call :WriteLog "DDL SOURCE | %DDL_SOURCE%"
 if "%DRY_RUN%"=="1" call :WriteLog "MODE | DRY-RUN"
+if "%PREFLIGHT_ONLY%"=="1" call :WriteLog "MODE | PREFLIGHT"
+
+if "%PREFLIGHT_ONLY%"=="1" (
+    call :RunPreflight
+    set "PROCESS_RC=!errorlevel!"
+    if not "!PROCESS_RC!"=="0" (
+        call :WriteLog "RUN END | mode=preflight status=failed"
+        call :WriteLog "LOG FILE | %LOG_FILE%"
+        exit /b !PROCESS_RC!
+    )
+
+    call :WriteLog "RUN END | mode=preflight status=ok"
+    call :WriteLog "LOG FILE | %LOG_FILE%"
+    echo Preflight patikra sekminga.
+    exit /b 0
+)
+
+set "OUTPUT_ROOT=%TASK_DIR%\%ENV_NAME%\%RUN_TIMESTAMP%"
+if not exist "%OUTPUT_ROOT%" mkdir "%OUTPUT_ROOT%" >nul 2>&1
 
 pushd "%PROJECT_ROOT%" >nul
 if errorlevel 1 (
@@ -140,17 +157,63 @@ set "TASK_NAME=%~1"
 set "ENV_NAME=%~2"
 set "SCHEMA_NAME="
 set "DRY_RUN=0"
+set "PREFLIGHT_ONLY=0"
 
-if not "%~3"=="" (
-    if /I "%~3"=="--dry-run" (
-        set "DRY_RUN=1"
-    ) else (
-        set "SCHEMA_NAME=%~3"
-    )
+shift
+shift
+
+:ParsePositionalArgsLoop
+if "%~1"=="" exit /b 0
+
+if /I "%~1"=="--dry-run" (
+    set "DRY_RUN=1"
+    shift
+    goto ParsePositionalArgsLoop
 )
-if /I "%~4"=="--dry-run" set "DRY_RUN=1"
-if /I "%~5"=="--dry-run" set "DRY_RUN=1"
-exit /b 0
+
+if /I "%~1"=="-DryRun" (
+    set "DRY_RUN=1"
+    shift
+    goto ParsePositionalArgsLoop
+)
+
+if /I "%~1"=="--preflight" (
+    set "PREFLIGHT_ONLY=1"
+    shift
+    goto ParsePositionalArgsLoop
+)
+
+if /I "%~1"=="-Preflight" (
+    set "PREFLIGHT_ONLY=1"
+    shift
+    goto ParsePositionalArgsLoop
+)
+
+if /I "%~1"=="--check" (
+    set "PREFLIGHT_ONLY=1"
+    shift
+    goto ParsePositionalArgsLoop
+)
+
+if /I "%~1"=="-ConfigPath" (
+    if "%~2"=="" (
+        echo Klaida: po -ConfigPath turi buti failo kelias.
+        exit /b 1
+    )
+    set "CONFIG_FILE=%~2"
+    shift
+    shift
+    goto ParsePositionalArgsLoop
+)
+
+if defined SCHEMA_NAME (
+    echo Klaida: nepazintas arba perteklinis positional argumentas "%~1".
+    exit /b 1
+)
+
+set "SCHEMA_NAME=%~1"
+shift
+goto ParsePositionalArgsLoop
 
 :ParseNamedArgs
 :ParseNamedArgsLoop
@@ -206,8 +269,26 @@ if /I "%~1"=="-DryRun" (
     goto ParseNamedArgsLoop
 )
 
+if /I "%~1"=="-Preflight" (
+    set "PREFLIGHT_ONLY=1"
+    shift
+    goto ParseNamedArgsLoop
+)
+
 if /I "%~1"=="--dry-run" (
     set "DRY_RUN=1"
+    shift
+    goto ParseNamedArgsLoop
+)
+
+if /I "%~1"=="--preflight" (
+    set "PREFLIGHT_ONLY=1"
+    shift
+    goto ParseNamedArgsLoop
+)
+
+if /I "%~1"=="--check" (
+    set "PREFLIGHT_ONLY=1"
     shift
     goto ParseNamedArgsLoop
 )
@@ -240,6 +321,7 @@ set "ENV_EXT_VIEWS="
 
 set "TARGET_ENV_FOUND=0"
 set "TASK_NLS_LANG="
+set "PREFLIGHT_VALIDATE_ONLY=0"
 exit /b 0
 
 :LoadConfig
@@ -583,7 +665,7 @@ if /I "!TASK_KEY!"=="schema" (
 
     if "!CURRENT_SCHEMA_ACTIVE!"=="1" (
         set "SCHEMA_FOUND=1"
-        if not exist "%OUTPUT_ROOT%\!CURRENT_SCHEMA!" mkdir "%OUTPUT_ROOT%\!CURRENT_SCHEMA!" >nul 2>&1
+        if /I not "!PREFLIGHT_VALIDATE_ONLY!"=="1" if not exist "%OUTPUT_ROOT%\!CURRENT_SCHEMA!" mkdir "%OUTPUT_ROOT%\!CURRENT_SCHEMA!" >nul 2>&1
     )
     exit /b 0
 )
@@ -655,8 +737,6 @@ if /I "%STEP_NAME%"=="views" (
     set "STEP_SAVE_DIR=%OUTPUT_ROOT%\%STEP_SCHEMA%\VIEWS"
 )
 
-if not exist "%STEP_SAVE_DIR%" mkdir "%STEP_SAVE_DIR%" >nul 2>&1
-
 set "STEP_REST=%STEP_RAW_LIST%"
 set /a STEP_OBJECT_COUNT=0
 :CountObjectsLoop
@@ -678,6 +758,13 @@ if "%STEP_OBJECT_COUNT%"=="0" (
     set /a SUMMARY_SKIPPED+=1
     exit /b 0
 )
+
+if /I "%PREFLIGHT_VALIDATE_ONLY%"=="1" (
+    call :WriteLog "CHECK | schema=%STEP_SCHEMA% step=%STEP_NAME% objects=%STEP_OBJECT_COUNT%"
+    exit /b 0
+)
+
+if not exist "%STEP_SAVE_DIR%" mkdir "%STEP_SAVE_DIR%" >nul 2>&1
 
 call :WriteLog "START | schema=%STEP_SCHEMA% step=%STEP_NAME% objects=%STEP_OBJECT_COUNT%"
 
@@ -747,6 +834,163 @@ if exist "%SQL_TMP_OUT%" (
 if not "%SQL_RC%"=="0" (
     call :WriteLog "ERROR | sqlplus baigesi su klaida (%SQL_RC%) vykdant %SQL_SCRIPT%"
     exit /b %SQL_RC%
+)
+
+exit /b 0
+
+:RunPreflight
+set "PREFLIGHT_SQL_SCRIPT=%SCRIPTS_DIR%\preflight_check.sql"
+set "PREFLIGHT_TMP_OUT=%LOGS_DIR%\preflight_%RUN_TIMESTAMP%_%RANDOM%%RANDOM%.tmp"
+
+call :WriteLog "PREFLIGHT | validating sqlplus executable"
+call :CheckSqlPlusExecutable
+if errorlevel 1 exit /b 1
+
+call :WriteLog "PREFLIGHT | validating required sql scripts"
+call :CheckRequiredSqlScripts
+if errorlevel 1 exit /b 1
+
+if not exist "%PREFLIGHT_SQL_SCRIPT%" (
+    echo Klaida: nerastas preflight SQL skriptas "%PREFLIGHT_SQL_SCRIPT%".
+    call :WriteLog "ERROR | nerastas preflight SQL skriptas %PREFLIGHT_SQL_SCRIPT%"
+    exit /b 1
+)
+
+set "PREFLIGHT_OLD_DRY_RUN=%DRY_RUN%"
+set "PREFLIGHT_VALIDATE_ONLY=1"
+set "DRY_RUN=1"
+set "OUTPUT_ROOT=%TASK_DIR%\%ENV_NAME%\%RUN_TIMESTAMP%_PREFLIGHT"
+
+call :WriteLog "PREFLIGHT | validating task file structure"
+call :ProcessTaskFile "%TASK_FILE%" "%ENV_NAME%" "%SCHEMA_NAME%"
+set "PREFLIGHT_TASK_RC=%errorlevel%"
+
+set "DRY_RUN=%PREFLIGHT_OLD_DRY_RUN%"
+set "PREFLIGHT_VALIDATE_ONLY=0"
+
+if not "%PREFLIGHT_TASK_RC%"=="0" exit /b %PREFLIGHT_TASK_RC%
+
+call :WriteLog "PREFLIGHT | checking Oracle connection and privileges"
+"%SQLPLUS_EXE%" -L -S "%CONNECTION_STRING%" @"%PREFLIGHT_SQL_SCRIPT%" > "%PREFLIGHT_TMP_OUT%" 2>&1
+set "PREFLIGHT_SQL_RC=%errorlevel%"
+
+if exist "%PREFLIGHT_TMP_OUT%" (
+    type "%PREFLIGHT_TMP_OUT%"
+    >> "%LOG_FILE%" type "%PREFLIGHT_TMP_OUT%"
+)
+
+if not "%PREFLIGHT_SQL_RC%"=="0" (
+    call :WriteLog "ERROR | preflight SQL patikra baigesi su klaida code=%PREFLIGHT_SQL_RC%"
+    if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+    exit /b %PREFLIGHT_SQL_RC%
+)
+
+findstr /x /c:"PREFLIGHT_CONN_OK" "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+if errorlevel 1 (
+    echo Klaida: preflight negavo DB prisijungimo patvirtinimo.
+    call :WriteLog "ERROR | preflight negavo DB prisijungimo patvirtinimo"
+    if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+    exit /b 1
+)
+
+findstr /x /c:"PREFLIGHT_DONE" "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+if errorlevel 1 (
+    echo Klaida: preflight SQL atsakymas nebaigtas - nera PREFLIGHT_DONE zymos.
+    call :WriteLog "ERROR | preflight SQL atsakymas nebaigtas"
+    if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+    exit /b 1
+)
+
+findstr /b /c:"PREFLIGHT_MISSING_PRIV:" "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+if not errorlevel 1 (
+    call :ReportMissingPrivileges "%PREFLIGHT_TMP_OUT%"
+    if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+    exit /b 1
+)
+
+findstr /b /c:"PREFLIGHT_MISSING_ROLE:" "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+if not errorlevel 1 (
+    call :ReportMissingRoles "%PREFLIGHT_TMP_OUT%"
+    if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+    exit /b 1
+)
+
+if exist "%PREFLIGHT_TMP_OUT%" del /q "%PREFLIGHT_TMP_OUT%" >nul 2>&1
+
+call :WriteLog "PREFLIGHT | all checks passed"
+exit /b 0
+
+:ReportMissingPrivileges
+set "REPORT_FILE=%~1"
+echo Klaida: truksta Oracle privilegiju:
+for /f "usebackq tokens=1* delims=:" %%A in (`findstr /b /c:"PREFLIGHT_MISSING_PRIV:" "%REPORT_FILE%"`) do (
+    echo   %%B
+)
+call :WriteLog "ERROR | truksta Oracle privilegiju"
+exit /b 0
+
+:ReportMissingRoles
+set "REPORT_FILE=%~1"
+echo Klaida: truksta Oracle roliu:
+for /f "usebackq tokens=1* delims=:" %%A in (`findstr /b /c:"PREFLIGHT_MISSING_ROLE:" "%REPORT_FILE%"`) do (
+    echo   %%B
+)
+call :WriteLog "ERROR | truksta Oracle roliu"
+exit /b 0
+
+:CheckSqlPlusExecutable
+set "SQLPLUS_CHECK=%SQLPLUS_EXE%"
+call :ExpandEnvPath "%SQLPLUS_CHECK%" SQLPLUS_CHECK
+call :StripQuotes "%SQLPLUS_CHECK%" SQLPLUS_CHECK
+call :Trim "%SQLPLUS_CHECK%" SQLPLUS_CHECK
+if not defined SQLPLUS_CHECK set "SQLPLUS_CHECK=sqlplus"
+
+call :IsAbsolutePath "%SQLPLUS_CHECK%" SQLPLUS_IS_ABSOLUTE
+if "%SQLPLUS_IS_ABSOLUTE%"=="1" (
+    if not exist "%SQLPLUS_CHECK%" (
+        echo Klaida: sqlplus executable nerastas "%SQLPLUS_CHECK%".
+        call :WriteLog "ERROR | sqlplus executable nerastas %SQLPLUS_CHECK%"
+        exit /b 1
+    )
+    exit /b 0
+)
+
+where "%SQLPLUS_CHECK%" >nul 2>&1
+if errorlevel 1 (
+    echo Klaida: sqlplus nerastas PATH. Patikrinkite sqlplus_executable config reiksme.
+    call :WriteLog "ERROR | sqlplus nerastas PATH, sqlplus_executable=%SQLPLUS_CHECK%"
+    exit /b 1
+)
+
+exit /b 0
+
+:CheckRequiredSqlScripts
+set "MISSING_SQL_SCRIPTS="
+
+for %%S in (
+    validate_and_export_package.sql
+    validate_and_export_procedure.sql
+    validate_and_export_function.sql
+    validate_and_export_type.sql
+    generate_tbl_ddl.sql
+    generate_tbl_ddl_dba.sql
+    generate_view_ddl.sql
+    generate_view_ddl_dba.sql
+    preflight_check.sql
+) do (
+    if not exist "%SCRIPTS_DIR%\%%S" (
+        if defined MISSING_SQL_SCRIPTS (
+            set "MISSING_SQL_SCRIPTS=!MISSING_SQL_SCRIPTS!, %%S"
+        ) else (
+            set "MISSING_SQL_SCRIPTS=%%S"
+        )
+    )
+)
+
+if defined MISSING_SQL_SCRIPTS (
+    echo Klaida: nerasti privalomi SQL skriptai: %MISSING_SQL_SCRIPTS%
+    call :WriteLog "ERROR | nerasti privalomi SQL skriptai: %MISSING_SQL_SCRIPTS%"
+    exit /b 1
 )
 
 exit /b 0
@@ -952,14 +1196,18 @@ exit /b 0
 :usage
 echo.
 echo Usage:
-echo   %~nx0 TASK ENV [SCHEMA] [--dry-run]
-echo   %~nx0 -TaskName TASK -EnvironmentName ENV [-SchemaName SCHEMA] [-ConfigPath path] [-DryRun]
+echo   %~nx0 TASK ENV [SCHEMA] [--dry-run] [--preflight] [-ConfigPath path]
+echo   %~nx0 -TaskName TASK -EnvironmentName ENV [-SchemaName SCHEMA] [-ConfigPath path] [-DryRun] [-Preflight]
 echo.
 echo Examples:
 echo   %~nx0 TASK_123 DEV
 echo   %~nx0 TASK_123 DEV APPUSER19
 echo   %~nx0 TASK_123 DEV --dry-run
 echo   %~nx0 TASK_123 DEV APPUSER19 --dry-run
+echo   %~nx0 TASK_123 DEV --preflight
+echo   %~nx0 TASK_123 DEV APPUSER19 --preflight
+echo   %~nx0 TASK_123 DEV --preflight -ConfigPath .\config\exporter.yaml
 echo   %~nx0 -TaskName TASK_123 -EnvironmentName DEV -SchemaName APPUSER19 -DryRun
+echo   %~nx0 -TaskName TASK_123 -EnvironmentName DEV -SchemaName APPUSER19 -Preflight
 echo.
 exit /b 1
