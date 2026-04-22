@@ -17,6 +17,7 @@ Sis variantas skirtas darbo aplinkai, kur:
 Komanda:
 
 oracle_exporter_task.bat TASK ENV [SCHEMA] [--dry-run] [--preflight] [-ConfigPath path]
+oracle_exporter_task.bat --ls [ENV] [SCHEMA] [--dry-run] [--preflight] [-ConfigPath path]
 
 Pavyzdziai:
 
@@ -27,6 +28,25 @@ oracle_exporter_task.bat TASK_123 DEV APPUSER19 --dry-run
 oracle_exporter_task.bat TASK_123 DEV --preflight
 oracle_exporter_task.bat TASK_123 DEV APPUSER19 --preflight
 oracle_exporter_task.bat TASK_123 DEV --preflight -ConfigPath .\config\exporter.yaml
+oracle_exporter_task.bat --ls
+oracle_exporter_task.bat --ls DEV --dry-run
+
+## Task sarasas ir pasirinkimas (--ls)
+
+`--ls` skirtas greitai pasirinkti jau esama task is `EXPORTED_OBJECTS`.
+
+Kas vyksta:
+
+1. Isspausdinami visi task katalogai, kuriuose yra `objects.txt`.
+2. Jei pasiekiamas PowerShell, task galima pasirinkti su Up/Down rodyklemis ir Enter.
+3. Jei PowerShell nepasiekiamas, veikia fallback pasirinkimas pagal numeri.
+4. Po task pasirinkimo galite ivesti ENV (pvz. DEV/TEST/PROD) ir optional SCHEMA.
+
+Pavyzdziai:
+
+oracle_exporter_task.bat --ls
+oracle_exporter_task.bat --ls DEV
+oracle_exporter_task.bat --ls DEV APPUSER19 --preflight
 
 ## Ka tiksliai duoda --dry-run
 
@@ -39,7 +59,7 @@ Kas ivyksta su `--dry-run`:
 	- `config/exporter.yaml`
 	- `EXPORTED_OBJECTS/<TASK>/objects.txt`
 3. Patikrinama, kad egzistuoja connection failas is config ir ji galima perskaityti.
-4. Suformuojamas pilnas vykdymo planas: kiekvienam zingsniui atspausdinamos SQL*Plus komandos (`EXECUTE | ...`).
+4. Suformuojamas vykdymo planas su auksto lygio zingsniu suvestine (`START`/`DONE`) ir pilnu objektu sarasu ataskaitoje.
 5. Sukuriamas run logas `logs/bat_export_<timestamp>.log`.
 
 Ko `--dry-run` nedaro:
@@ -52,6 +72,40 @@ Svarbi praktine pastaba:
 
 - `--dry-run` gali sukurti tik run katalogo struktura po `EXPORTED_OBJECTS/...` ir log faila, bet ne objektu DDL/source turini.
 - Jei reikia tik patikrinti plana pries produkcini paleidima, visada pirma naudokite `--dry-run`.
+
+## Eksportuotu objektu sarasas vienoje vietoje
+
+Pagrindinis run logas `logs/bat_export_<timestamp>.log` dabar paliktas svarus (tiek realiame vykdyme, tiek `--dry-run`):
+
+- neberaso `OBJECT LIST`, `EXPORTED OBJECT`, `PLAN OBJECT` ir `QUEUE` eiluciu;
+- palieka tik auksto lygio eiga (START/DONE/BATCH/summary).
+
+`--dry-run` rezime neberasomos per-objekto `EXECUTE` komandos.
+
+Run pabaigoje vis dar rasomas objektu kiekio summary:
+
+- `exported_objects=<kiekis>` (realus vykdymas)
+- `planned_objects=<kiekis>` (`--dry-run`)
+
+Pilnas objektu sarasas rasomas i atskira faila:
+
+- `logs/exported_objects_<timestamp>.txt`
+
+Failo formatas:
+
+- `mode|schema|step|object`
+
+Kur `mode` yra `EXPORT` (realus vykdymas) arba `PLAN` (`--dry-run`).
+
+## DB prisijungimas vykdymo metu
+
+Realiame eksporte (be `--dry-run`) objektu SQL komandos dabar sujungiamos i viena SQL*Plus batch ir vykdomos per viena DB sesija per run.
+
+Ką tai duoda:
+
+1. Nebedaromas naujas prisijungimas kiekvienam objektui.
+2. Mazesne prisijungimu apkrova DB puseje.
+3. Greitesnis vykdymas, kai task'e yra daug objektu.
 
 ## Ka tiksliai duoda --preflight
 
@@ -112,3 +166,15 @@ Path/logikos pastaba:
 - NLS koduote gali buti nurodyta task faile per `nls_lang:`.
 - `config/exporter.yaml` `export_extensions` reiksmes gali buti bet kokios (pvz. `pr`, `prc`, `fc`, `fnc`, `pkgx`, `sqlx` ir pan.) - jos neberibojamos iki fiksuoto saraso.
 
+## Testavimas
+
+- Test scenariju kontraktas: `testing/TEST_SCENARIOS.md`
+- Automatiniu kontraktiniu testu paleidimas: `testing/run_contract_tests.bat`
+
+Komanda:
+
+testing\run_contract_tests.bat
+
+Testu tikslas:
+
+- Uzfiksuoti funkcini kontrakta, kad perrasant i Python/EXE/C# butu islaikytas identiskas elgesys.

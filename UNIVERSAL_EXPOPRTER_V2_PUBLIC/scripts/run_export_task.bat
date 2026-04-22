@@ -18,15 +18,28 @@ set "SCHEMA_NAME="
 set "CONFIG_FILE=%DEFAULT_CONFIG%"
 set "DRY_RUN=0"
 set "PREFLIGHT_ONLY=0"
+set "LIST_MODE=0"
 
 if /I "%~1"=="-h" goto usage
 if /I "%~1"=="--help" goto usage
-if "%~1"=="" goto usage
+if /I "%~1"=="--ls" (
+    set "LIST_MODE=1"
+    shift
+)
+if /I "%~1"=="--list" (
+    set "LIST_MODE=1"
+    shift
+)
 
-if /I "%~1"=="-TaskName" (
-    call :ParseNamedArgs %*
+if "%LIST_MODE%"=="1" (
+    call :HandleListMode %*
 ) else (
-    call :ParsePositionalArgs %*
+    if "%~1"=="" goto usage
+    if /I "%~1"=="-TaskName" (
+        call :ParseNamedArgs %*
+    ) else (
+        call :ParsePositionalArgs %*
+    )
 )
 if errorlevel 1 exit /b 1
 
@@ -108,6 +121,24 @@ set "LOG_FILE=%LOGS_DIR%\bat_export_%RUN_TIMESTAMP%.log"
 set /a SUMMARY_TOTAL=0
 set /a SUMMARY_EXECUTED=0
 set /a SUMMARY_SKIPPED=0
+set /a SUMMARY_OBJECTS_EXPORTED=0
+set /a SUMMARY_OBJECTS_PLANNED=0
+set "OBJECTS_REPORT_FILE=%LOGS_DIR%\exported_objects_%RUN_TIMESTAMP%.txt"
+
+set "SQL_BATCH_FILE="
+set "SQL_BATCH_ACTIVE=0"
+set "SQL_BATCH_HAS_COMMANDS=0"
+
+if "%DRY_RUN%"=="0" (
+    set "SQL_BATCH_FILE=%LOGS_DIR%\sqlplus_batch_%RUN_TIMESTAMP%_%RANDOM%%RANDOM%.sql"
+    > "%SQL_BATCH_FILE%" (
+        echo whenever oserror exit failure
+        echo whenever sqlerror exit sql.sqlcode
+        echo set define on
+        echo set verify off
+    )
+    set "SQL_BATCH_ACTIVE=1"
+)
 
 call :WriteLog "RUN START | task=%TASK_LABEL% env=%ENV_NAME% timestamp=%RUN_TIMESTAMP%"
 call :WriteLog "CONFIG | %CONFIG_FILE%"
@@ -131,6 +162,14 @@ if "%PREFLIGHT_ONLY%"=="1" (
     exit /b 0
 )
 
+> "%OBJECTS_REPORT_FILE%" (
+    echo timestamp=%RUN_TIMESTAMP%
+    echo task=%TASK_LABEL%
+    echo env=%ENV_NAME%
+    echo.
+    echo mode^|schema^|step^|object
+)
+
 set "OUTPUT_ROOT=%TASK_DIR%\%ENV_NAME%\%RUN_TIMESTAMP%"
 if not exist "%OUTPUT_ROOT%" mkdir "%OUTPUT_ROOT%" >nul 2>&1
 
@@ -143,11 +182,23 @@ if errorlevel 1 (
 call :ProcessTaskFile "%TASK_FILE%" "%ENV_NAME%" "%SCHEMA_NAME%"
 set "PROCESS_RC=%errorlevel%"
 
+if "%PROCESS_RC%"=="0" if "%DRY_RUN%"=="0" (
+    call :RunSqlPlusBatch
+    set "PROCESS_RC=%errorlevel%"
+)
+
 popd >nul
+
+if not "%PROCESS_RC%"=="0" if defined SQL_BATCH_FILE if exist "%SQL_BATCH_FILE%" del /q "%SQL_BATCH_FILE%" >nul 2>&1
 
 if not "%PROCESS_RC%"=="0" exit /b %PROCESS_RC%
 
-call :WriteLog "RUN END | total=%SUMMARY_TOTAL% executed=%SUMMARY_EXECUTED% skipped=%SUMMARY_SKIPPED%"
+if "%DRY_RUN%"=="1" (
+    call :WriteLog "RUN END | total=%SUMMARY_TOTAL% executed=%SUMMARY_EXECUTED% skipped=%SUMMARY_SKIPPED% planned_objects=%SUMMARY_OBJECTS_PLANNED%"
+) else (
+    call :WriteLog "RUN END | total=%SUMMARY_TOTAL% executed=%SUMMARY_EXECUTED% skipped=%SUMMARY_SKIPPED% exported_objects=%SUMMARY_OBJECTS_EXPORTED%"
+)
+call :WriteLog "OBJECT REPORT | %OBJECTS_REPORT_FILE%"
 call :WriteLog "LOG FILE | %LOG_FILE%"
 exit /b 0
 
@@ -168,6 +219,229 @@ for /f "skip=2 tokens=1,2,*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\C
     )
 )
 exit /b 0
+
+:HandleListMode
+call :BuildTaskList
+if "%TASK_PICK_COUNT%"=="0" (
+    echo Klaida: aplanke "%OUTPUT_BASE%" nerasta nei vieno task su objects.txt failu.
+    exit /b 1
+)
+
+call :PrintTaskList
+
+call :SelectTaskWithArrows SELECTED_TASK_NAME
+set "LIST_PICK_RC=%errorlevel%"
+
+if "%LIST_PICK_RC%"=="3" (
+    echo Task pasirinkimas atsauktas.
+    exit /b 1
+)
+
+if "%LIST_PICK_RC%"=="0" (
+    set "TASK_NAME=!SELECTED_TASK_NAME!"
+) else (
+    call :SelectTaskByNumber SELECTED_TASK_NAME
+    if errorlevel 1 exit /b 1
+    set "TASK_NAME=!SELECTED_TASK_NAME!"
+)
+
+call :ParseListModeArgs %*
+if errorlevel 1 exit /b 1
+
+if not defined ENV_NAME call :PromptEnvironment ENV_NAME
+if errorlevel 1 exit /b 1
+
+if not defined SCHEMA_NAME call :PromptOptionalSchema SCHEMA_NAME
+if errorlevel 1 exit /b 1
+
+exit /b 0
+
+:BuildTaskList
+for /f "tokens=1 delims==" %%V in ('set TASK_PICK_ 2^>nul') do set "%%V="
+set "TASK_PICK_COUNT=0"
+
+if not exist "%OUTPUT_BASE%\." exit /b 0
+
+for /f "delims=" %%D in ('dir /b /ad "%OUTPUT_BASE%" 2^>nul') do (
+    if exist "%OUTPUT_BASE%\%%D\objects.txt" (
+        set /a TASK_PICK_COUNT+=1
+        set "TASK_PICK_!TASK_PICK_COUNT!=%%D"
+    )
+)
+
+exit /b 0
+
+:PrintTaskList
+echo.
+echo Pasiekiami task aplanke "%OUTPUT_BASE%":
+for /l %%I in (1,1,%TASK_PICK_COUNT%) do call echo   %%I. %%TASK_PICK_%%I%%
+echo.
+exit /b 0
+
+:SelectTaskWithArrows
+set "SELECT_TASK_SCRIPT=%SCRIPTS_DIR%\select_task_interactive.ps1"
+set "SELECT_TASK_FILE=%TEMP%\oracle_exporter_task_select_%RANDOM%%RANDOM%.txt"
+
+if not exist "%SELECT_TASK_SCRIPT%" exit /b 2
+
+where powershell >nul 2>&1
+if errorlevel 1 exit /b 2
+
+if exist "%SELECT_TASK_FILE%" del /q "%SELECT_TASK_FILE%" >nul 2>&1
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SELECT_TASK_SCRIPT%" -OutputBase "%OUTPUT_BASE%" -SelectionFile "%SELECT_TASK_FILE%"
+set "SELECT_TASK_RC=%errorlevel%"
+
+if "%SELECT_TASK_RC%"=="0" (
+    if exist "%SELECT_TASK_FILE%" (
+        set "SELECTED_TASK_VALUE="
+        set /p SELECTED_TASK_VALUE=<"%SELECT_TASK_FILE%"
+        del /q "%SELECT_TASK_FILE%" >nul 2>&1
+        call :Trim "%SELECTED_TASK_VALUE%" SELECTED_TASK_VALUE
+        if defined SELECTED_TASK_VALUE (
+            set "%~1=%SELECTED_TASK_VALUE%"
+            exit /b 0
+        )
+    )
+)
+
+if exist "%SELECT_TASK_FILE%" del /q "%SELECT_TASK_FILE%" >nul 2>&1
+if "%SELECT_TASK_RC%"=="3" exit /b 3
+exit /b 2
+
+:SelectTaskByNumber
+:SelectTaskByNumberLoop
+set "TASK_PICK_INPUT="
+set /p TASK_PICK_INPUT="Pasirinkite task numeri ir spauskite Enter: "
+call :Trim "%TASK_PICK_INPUT%" TASK_PICK_INPUT
+
+if not defined TASK_PICK_INPUT (
+    echo Klaida: iveskite task numeri.
+    goto SelectTaskByNumberLoop
+)
+
+echo(%TASK_PICK_INPUT%| findstr /r "^[0-9][0-9]*$" >nul
+if errorlevel 1 (
+    echo Klaida: reikia ivesti skaiciu.
+    goto SelectTaskByNumberLoop
+)
+
+set /a TASK_PICK_INDEX=%TASK_PICK_INPUT%
+if %TASK_PICK_INDEX% LSS 1 (
+    echo Klaida: numeris turi buti nuo 1 iki %TASK_PICK_COUNT%.
+    goto SelectTaskByNumberLoop
+)
+if %TASK_PICK_INDEX% GTR %TASK_PICK_COUNT% (
+    echo Klaida: numeris turi buti nuo 1 iki %TASK_PICK_COUNT%.
+    goto SelectTaskByNumberLoop
+)
+
+call set "TASK_PICK_VALUE=%%TASK_PICK_%TASK_PICK_INDEX%%%"
+if not defined TASK_PICK_VALUE (
+    echo Klaida: nepavyko nuskaityti task pagal pasirinkta numeri.
+    goto SelectTaskByNumberLoop
+)
+
+set "%~1=%TASK_PICK_VALUE%"
+exit /b 0
+
+:PromptEnvironment
+:PromptEnvironmentLoop
+echo.
+set "PROMPT_ENV_VALUE="
+set /p PROMPT_ENV_VALUE="Iveskite ENV (pvz. DEV, TEST, PREPROD, PROD): "
+call :Trim "%PROMPT_ENV_VALUE%" PROMPT_ENV_VALUE
+
+if not defined PROMPT_ENV_VALUE (
+    echo Klaida: ENV reiksme yra privaloma.
+    goto PromptEnvironmentLoop
+)
+
+set "%~1=%PROMPT_ENV_VALUE%"
+exit /b 0
+
+:PromptOptionalSchema
+echo.
+set "PROMPT_SCHEMA_VALUE="
+set /p PROMPT_SCHEMA_VALUE="Iveskite SCHEMA (optional, Enter=visos): "
+call :Trim "%PROMPT_SCHEMA_VALUE%" PROMPT_SCHEMA_VALUE
+set "%~1=%PROMPT_SCHEMA_VALUE%"
+exit /b 0
+
+:ParseListModeArgs
+:ParseListModeArgsLoop
+if "%~1"=="" exit /b 0
+
+if /I "%~1"=="--dry-run" (
+    set "DRY_RUN=1"
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if /I "%~1"=="-DryRun" (
+    set "DRY_RUN=1"
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if /I "%~1"=="--preflight" (
+    set "PREFLIGHT_ONLY=1"
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if /I "%~1"=="-Preflight" (
+    set "PREFLIGHT_ONLY=1"
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if /I "%~1"=="--check" (
+    set "PREFLIGHT_ONLY=1"
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if /I "%~1"=="-ConfigPath" (
+    if "%~2"=="" (
+        echo Klaida: po -ConfigPath turi buti failo kelias.
+        exit /b 1
+    )
+    set "CONFIG_FILE=%~2"
+    shift
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if /I "%~1"=="--ls" (
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if /I "%~1"=="--list" (
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if "%~1:~0,1%"=="-" (
+    echo Klaida: nepazintas argumentas list rezime "%~1".
+    exit /b 1
+)
+
+if not defined ENV_NAME (
+    set "ENV_NAME=%~1"
+    shift
+    goto ParseListModeArgsLoop
+)
+
+if not defined SCHEMA_NAME (
+    set "SCHEMA_NAME=%~1"
+    shift
+    goto ParseListModeArgsLoop
+)
+
+echo Klaida: perteklinis argumentas list rezime "%~1".
+exit /b 1
 
 :ParsePositionalArgs
 if "%~1"=="" exit /b 1
@@ -1117,6 +1391,14 @@ if defined STEP_TOKEN (
     if /I "%STEP_NAME%"=="views" call :InvokeSqlPlus "%STEP_SCRIPT%" "%STEP_SAVE_DIR%" "%STEP_SCHEMA%" "%STEP_TOKEN%" "%STEP_EXTENSION%"
 
     if errorlevel 1 exit /b 1
+
+    if "%DRY_RUN%"=="1" (
+        set /a SUMMARY_OBJECTS_PLANNED+=1
+        >> "%OBJECTS_REPORT_FILE%" echo PLAN^|%STEP_SCHEMA%^|%STEP_NAME%^|%STEP_TOKEN%
+    ) else (
+        set /a SUMMARY_OBJECTS_EXPORTED+=1
+        >> "%OBJECTS_REPORT_FILE%" echo EXPORT^|%STEP_SCHEMA%^|%STEP_NAME%^|%STEP_TOKEN%
+    )
 )
 
 if defined STEP_NEXT (
@@ -1144,8 +1426,17 @@ if not "%~4"=="" set "SQL_ARGS=!SQL_ARGS! ^"%~4^""
 if not "%~5"=="" set "SQL_ARGS=!SQL_ARGS! ^"%~5^""
 if not "%~6"=="" set "SQL_ARGS=!SQL_ARGS! ^"%~6^""
 
+if "%DRY_RUN%"=="1" (
+    exit /b 0
+)
+
+if "%SQL_BATCH_ACTIVE%"=="1" (
+    >> "%SQL_BATCH_FILE%" echo(@"%SQL_SCRIPT_PATH%"%SQL_ARGS%
+    set "SQL_BATCH_HAS_COMMANDS=1"
+    exit /b 0
+)
+
 call :WriteLog "EXECUTE | %SQLPLUS_EXE% <connection-redacted> @%SQL_SCRIPT_PATH%%SQL_ARGS%"
-if "%DRY_RUN%"=="1" exit /b 0
 
 set "SQL_TMP_OUT=%LOGS_DIR%\sqlplus_%RUN_TIMESTAMP%_%RANDOM%%RANDOM%.tmp"
 
@@ -1163,6 +1454,39 @@ if exist "%SQL_TMP_OUT%" (
 
 if not "%SQL_RC%"=="0" (
     call :WriteLog "ERROR | sqlplus baigesi su klaida (%SQL_RC%) vykdant %SQL_SCRIPT%"
+    exit /b %SQL_RC%
+)
+
+exit /b 0
+
+:RunSqlPlusBatch
+if not "%SQL_BATCH_ACTIVE%"=="1" exit /b 0
+
+if "%SQL_BATCH_HAS_COMMANDS%"=="0" (
+    call :WriteLog "EXECUTE BATCH | no sql commands queued"
+    if exist "%SQL_BATCH_FILE%" del /q "%SQL_BATCH_FILE%" >nul 2>&1
+    exit /b 0
+)
+
+>> "%SQL_BATCH_FILE%" echo exit
+
+call :WriteLog "EXECUTE BATCH | %SQLPLUS_EXE% <connection-redacted> @%SQL_BATCH_FILE%"
+
+set "SQL_TMP_OUT=%LOGS_DIR%\sqlplus_%RUN_TIMESTAMP%_%RANDOM%%RANDOM%.tmp"
+
+"%SQLPLUS_EXE%" -L "%CONNECTION_STRING%" @"%SQL_BATCH_FILE%" > "%SQL_TMP_OUT%" 2>&1
+set "SQL_RC=%errorlevel%"
+
+if exist "%SQL_TMP_OUT%" (
+    type "%SQL_TMP_OUT%"
+    >> "%LOG_FILE%" type "%SQL_TMP_OUT%"
+    del /q "%SQL_TMP_OUT%" >nul 2>&1
+)
+
+if exist "%SQL_BATCH_FILE%" del /q "%SQL_BATCH_FILE%" >nul 2>&1
+
+if not "%SQL_RC%"=="0" (
+    call :WriteLog "ERROR | sqlplus batch baigesi su klaida (%SQL_RC%)"
     exit /b %SQL_RC%
 )
 
@@ -1635,9 +1959,12 @@ exit /b 0
 echo.
 echo Usage:
 echo   %~nx0 TASK ENV [SCHEMA] [--dry-run] [--preflight] [-ConfigPath path]
+echo   %~nx0 --ls [ENV] [SCHEMA] [--dry-run] [--preflight] [-ConfigPath path]
 echo   %~nx0 -TaskName TASK -EnvironmentName ENV [-SchemaName SCHEMA] [-ConfigPath path] [-DryRun] [-Preflight]
 echo.
 echo Examples:
+echo   %~nx0 --ls
+echo   %~nx0 --ls DEV --dry-run
 echo   %~nx0 TASK_123 DEV
 echo   %~nx0 TASK_123 DEV APPUSER19
 echo   %~nx0 TASK_123 DEV --dry-run
